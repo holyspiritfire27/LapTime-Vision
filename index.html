@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>體育測驗計時系統 - 人機協作版</title>
+    <title>LapTime-Vision 視覺計時系統</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f0f0f0; }
@@ -15,9 +15,18 @@
         select, input[type="file"], input[type="number"], input[type="text"], textarea { width: 100%; padding: 8px; margin-top: 5px; font-size: 1rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
         #btn-confirm-setup { background-color: #4CAF50; color: white; padding: 15px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; flex-shrink: 0;}
         
+        /* ===== 相機掃描模態框 (新功能) ===== */
+        #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
+        #scanner-container { position: relative; width: 90%; max-width: 400px; border-radius: 10px; overflow: hidden; background: #000; }
+        #scanner-video { width: 100%; display: block; object-fit: cover; }
+        #scanner-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 150px; height: 150px; border: 3px dashed #FFEB3B; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); pointer-events: none; }
+        .scanner-controls { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-scan { background: #2196F3; color: white; border: none; padding: 12px 20px; font-size: 1.1rem; border-radius: 8px; font-weight: bold; cursor: pointer;}
+        .btn-close-scan { background: #f44336; color: white; border: none; padding: 12px 20px; font-size: 1.1rem; border-radius: 8px; font-weight: bold; cursor: pointer;}
+        #vision-profile-display { margin-top: 10px; font-size: 0.85rem; color: #4CAF50; font-weight: bold; background: #e8f5e9; padding: 8px; border-radius: 5px; display: none; }
+
         /* ===== 測驗畫面 ===== */
         #test-section { display: none; flex-direction: column; height: 100vh; position: relative; }
-        
         #top-section { padding: 10px; text-align: center; background-color: #333; color: white; flex-shrink: 0; }
         #timer { font-size: 2.5rem; font-weight: bold; font-variant-numeric: tabular-nums; margin-bottom: 5px; }
         button.control-btn { padding: 8px 12px; font-size: 1rem; margin: 3px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
@@ -29,7 +38,7 @@
         #btn-reset { background-color: #f44336; color: white; }
         #btn-fullscreen { background-color: #607D8B; color: white; }
         
-        /* AI 待確認緩衝區 (核心新功能) */
+        /* AI 待確認緩衝區 */
         #ai-queue-section { background-color: #ffe0b2; padding: 10px; flex-shrink: 0; display: flex; overflow-x: auto; gap: 10px; min-height: 60px; align-items: center; border-bottom: 2px solid #ff9800;}
         .ai-queue-label { font-weight: bold; color: #e65100; white-space: nowrap; margin-right: 5px;}
         .ai-card { background: white; border: 2px solid #ff9800; border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1); animation: popIn 0.3s ease; }
@@ -39,14 +48,14 @@
         .ai-btn-ok { background: #4CAF50; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
         .ai-btn-no { background: #f44336; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
         
-        /* 模擬 AI 按鈕 (測試用) */
+        /* 模擬 AI 按鈕 */
         #btn-simulate-ai { background-color: #9C27B0; color: white; border: none; border-radius: 5px; padding: 5px 10px; margin-top: 5px; cursor: pointer; font-size: 0.8rem; }
 
-        /* 中間：相機畫面 */
+        /* 相機預覽區 */
         #camera-section { height: 120px; background-color: #000; position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         #viewfinder { width: 100%; height: 100%; object-fit: cover; }
         
-        /* 下半部：學生按鈕網格 (手動補漏區) */
+        /* 學生按鈕網格 */
         #student-section { padding: 10px; overflow-y: auto; flex-grow: 1; }
         #student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
         .student-btn { padding: 15px 5px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; background-color: #2196F3; color: white; transition: background-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
@@ -57,11 +66,25 @@
 </head>
 <body>
 
+    <div id="scanner-modal">
+        <h3 style="color: white; margin-bottom: 10px;">號碼衣特徵學習</h3>
+        <p style="color: #ccc; font-size: 0.9rem; margin-top: 0;">請將號碼衣置於黃色虛線框內</p>
+        <div id="scanner-container">
+            <video id="scanner-video" autoplay playsinline muted></video>
+            <div id="scanner-overlay"></div>
+        </div>
+        <canvas id="snapshot-canvas" style="display:none;"></canvas>
+        <div class="scanner-controls">
+            <button class="btn-scan" onclick="captureAndAnalyze()">📸 擷取並記錄特徵</button>
+            <button class="btn-close-scan" onclick="closeScanner()">完成 / 關閉</button>
+        </div>
+    </div>
+
     <div id="setup-section">
-        <h2 style="margin-top: 0; margin-bottom: 5px;">測驗設定</h2>
+        <h2 style="margin-top: 0; margin-bottom: 5px;">LapTime-Vision 設定</h2>
         
         <div class="setup-group">
-            <label>1. 基本設定</label>
+            <label>1. 測驗基本參數</label>
             <input type="text" id="input-test-name" placeholder="測驗名稱 / 班級">
             <select id="sel-distance">
                 <option value="800">800 公尺</option>
@@ -75,11 +98,18 @@
         </div>
 
         <div class="setup-group">
-            <label>3. 匯入學生名單</label>
-            <textarea id="manual-names" rows="3" placeholder="請輸入姓名，例如：&#10;王小明&#10;陳大喵&#10;李小華&#10;張大山"></textarea>
+            <label>2. 匯入受測學生 / 視覺學習</label>
+            
+            <button type="button" onclick="openScanner()" style="background:#E91E63; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">
+                📷 啟動相機辨識受測號碼
+            </button>
+            
+            <div id="vision-profile-display">尚未記錄視覺特徵</div>
+
+            <textarea id="manual-names" rows="4" placeholder="請手動輸入或用上方相機掃描加入...&#10;例如：15號 王小明"></textarea>
         </div>
 
-        <button id="btn-confirm-setup" onclick="startSetup()">確認無誤，進入測驗</button>
+        <button id="btn-confirm-setup" onclick="startSetup()">儲存特徵並進入測驗</button>
     </div>
 
     <div id="test-section">
@@ -92,13 +122,12 @@
             <button id="btn-pause" class="control-btn" onclick="pauseTimer()">暫停</button>
             <button id="btn-start" class="control-btn" onclick="startTimer()">開始測驗 (Go)</button>
             <br>
-            <button id="btn-simulate-ai" onclick="simulateAI()">🤖 模擬 AI 視覺辨識到學生衝線</button>
+            <button id="btn-simulate-ai" onclick="simulateAI()">🤖 模擬 AI 視覺辨識衝線</button>
         </div>
 
         <div id="ai-queue-section">
-            <div class="ai-queue-label">AI 辨識區<br><span style="font-size:0.7rem;">等待教師確認</span></div>
-            <div id="ai-queue-container" style="display:flex; gap:10px;">
-                </div>
+            <div class="ai-queue-label">AI 辨識區<br><span style="font-size:0.7rem;">等待確認</span></div>
+            <div id="ai-queue-container" style="display:flex; gap:10px;"></div>
         </div>
 
         <div id="camera-section">
@@ -111,11 +140,93 @@
     </div>
 
     <script>
-        // --- 全局變數 ---
+        // ==========================================
+        // 模組一：視覺特徵掃描與學習引擎 (Vision Calibration)
+        // ==========================================
+        let scannerStream = null;
+        let visionProfiles = []; // 儲存學習到的特徵 { number, bibColor, textColor }
+
+        async function openScanner() {
+            const modal = document.getElementById('scanner-modal');
+            const video = document.getElementById('scanner-video');
+            modal.style.display = 'flex';
+            try {
+                scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = scannerStream;
+            } catch (err) {
+                alert("無法開啟相機，請確認瀏覽器權限！");
+                closeScanner();
+            }
+        }
+
+        function closeScanner() {
+            if (scannerStream) {
+                scannerStream.getTracks().forEach(t => t.stop());
+            }
+            document.getElementById('scanner-modal').style.display = 'none';
+        }
+
+        function captureAndAnalyze() {
+            const video = document.getElementById('scanner-video');
+            const canvas = document.getElementById('snapshot-canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            // 設定畫布與影片比例相同
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 模擬擷取中央 150x150 區域 (配合黃色虛線框)
+            const boxSize = 150;
+            const startX = (canvas.width - boxSize) / 2;
+            const startY = (canvas.height - boxSize) / 2;
+            const imgData = ctx.getImageData(startX, startY, boxSize, boxSize).data;
+
+            // 簡易特徵萃取演算法：尋找底色 (平均色) 與字色 (最暗對比色)
+            let rSum = 0, gSum = 0, bSum = 0, count = 0;
+            let minBright = 255, darkColor = {r:0, g:0, b:0};
+
+            for(let i=0; i<imgData.length; i+=4) {
+                let r = imgData[i], g = imgData[i+1], b = imgData[i+2];
+                rSum += r; gSum += g; bSum += b; count++;
+                let brightness = (r*299 + g*587 + b*114)/1000;
+                if(brightness < minBright) { minBright = brightness; darkColor = {r,g,b}; }
+            }
+            
+            let avgColor = {r: Math.round(rSum/count), g: Math.round(gSum/count), b: Math.round(bSum/count)};
+            let bibHex = rgbToHex(avgColor.r, avgColor.g, avgColor.b);
+            let textHex = rgbToHex(darkColor.r, darkColor.g, darkColor.b);
+
+            // 模擬 OCR 系統詢問教師確認
+            let detectedNum = prompt(`【視覺特徵已分析】\n系統偵測到底色: ${bibHex}, 字色: ${textHex}\n\n請輸入系統辨識到的這件號碼：`, "");
+            
+            if (detectedNum && detectedNum.trim() !== "") {
+                // 記錄特徵
+                visionProfiles.push({ number: detectedNum.trim(), bibColor: bibHex, textColor: textHex });
+                
+                // 自動將號碼加入名單輸入框
+                let textArea = document.getElementById('manual-names');
+                let currentText = textArea.value;
+                textArea.value = currentText + (currentText ? '\n' : '') + `受測號碼 ${detectedNum.trim()}`;
+                
+                // 更新設定畫面上的特徵顯示
+                const profileDisplay = document.getElementById('vision-profile-display');
+                profileDisplay.style.display = 'block';
+                profileDisplay.innerHTML = `🎯 已學習視覺線索：<br>底色 <span style="background:${bibHex}; width:15px; height:15px; display:inline-block; border:1px solid #000;"></span> 字色 <span style="background:${textHex}; width:15px; height:15px; display:inline-block; border:1px solid #000;"></span> (共 ${visionProfiles.length} 筆資料)`;
+            }
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
+        }
+
+        // ==========================================
+        // 模組二：主系統邏輯 (繼承 LapTime-Vision 人機協作版)
+        // ==========================================
         let targetLaps = 8; 
         let students = []; 
-        let aiQueue = []; // AI 待確認佇列
-        let aiQueueCounter = 0; // 用來給每個 AI 辨識一個唯一 ID
+        let aiQueue = []; 
+        let aiQueueCounter = 0; 
         let isRunning = false;
         let startTime, updatedTime, difference = 0, timeSaved = 0;
         let timerAnimationId; 
@@ -127,7 +238,8 @@
 
             let finalNames = document.getElementById('manual-names').value.trim().split('\n').map(n => n.trim()).filter(n => n !== "");
             if (finalNames.length === 0) {
-                finalNames = ["王小明", "陳大喵", "李小華", "張大山", "林小美"]; // 給預設值方便測試
+                alert("請至少輸入一位學生，或使用相機辨識號碼加入！");
+                return;
             }
 
             students = finalNames.map((name, index) => {
@@ -143,55 +255,36 @@
             renderGrid();
         }
 
-        // ==========================================
-        // 人機協作：AI 緩衝區邏輯
-        // ==========================================
-
-        // 模擬攝影機與視覺 AI 抓到號碼
+        // --- 人機協作：AI 緩衝區邏輯 ---
         function simulateAI() {
-            if (!isRunning) {
-                alert("請先點擊【開始測驗】！");
-                return;
-            }
-            // 隨機抽一個還沒跑完的學生
+            if (!isRunning) return alert("請先點擊【開始測驗】！");
             let activeStudents = students.filter(s => s.currentLap < targetLaps);
             if (activeStudents.length === 0) return;
             let randomStudent = activeStudents[Math.floor(Math.random() * activeStudents.length)];
 
-            // 紀錄當下的「精確時間戳」
             let exactTimestampDifference = difference;
-            let exactTimeStr = formatTime(exactTimestampDifference);
-
             let queueItem = {
                 uid: aiQueueCounter++,
                 studentId: randomStudent.id,
                 name: randomStudent.name,
                 timestampDiff: exactTimestampDifference,
-                timeStr: exactTimeStr
+                timeStr: formatTime(exactTimestampDifference)
             };
 
             aiQueue.push(queueItem);
             renderAIQueue();
         }
 
-        // 渲染待確認區
         function renderAIQueue() {
             const container = document.getElementById('ai-queue-container');
             container.innerHTML = '';
-            
-            if (aiQueue.length === 0) {
-                container.innerHTML = '<span style="color:#aaa; font-size:0.9rem;">目前無待確認資料</span>';
-                return;
-            }
+            if (aiQueue.length === 0) { container.innerHTML = '<span style="color:#aaa; font-size:0.9rem;">目前無待確認資料</span>'; return; }
 
             aiQueue.forEach(item => {
                 let card = document.createElement('div');
                 card.className = 'ai-card';
                 card.innerHTML = `
-                    <div class="stu-info">
-                        ${item.name}
-                        <span class="ai-time">⏱ ${item.timeStr}</span>
-                    </div>
+                    <div class="stu-info">${item.name}<span class="ai-time">⏱ ${item.timeStr}</span></div>
                     <button class="ai-btn-ok" onclick="confirmAI(${item.uid})">✔️</button>
                     <button class="ai-btn-no" onclick="discardAI(${item.uid})">❌</button>
                 `;
@@ -199,35 +292,21 @@
             });
         }
 
-        // 教師點擊：確認 AI 辨識
         function confirmAI(uid) {
             let itemIndex = aiQueue.findIndex(q => q.uid === uid);
             if (itemIndex > -1) {
-                let item = aiQueue[itemIndex];
-                
-                // 呼叫紀錄成績，並帶入 AI 捕捉到的「精確時間戳」，而非現在的時間！
-                recordLap(item.studentId, item.timestampDiff);
-                
-                // 將該筆資料從佇列移除
+                recordLap(aiQueue[itemIndex].studentId, aiQueue[itemIndex].timestampDiff);
                 aiQueue.splice(itemIndex, 1);
                 renderAIQueue();
             }
         }
 
-        // 教師點擊：取消 AI 誤判
         function discardAI(uid) {
             let itemIndex = aiQueue.findIndex(q => q.uid === uid);
-            if (itemIndex > -1) {
-                aiQueue.splice(itemIndex, 1);
-                renderAIQueue();
-            }
+            if (itemIndex > -1) { aiQueue.splice(itemIndex, 1); renderAIQueue(); }
         }
 
-
-        // ==========================================
-        // 核心計時與介面邏輯
-        // ==========================================
-
+        // --- 核心動態排位網格 ---
         function renderGrid() {
             const grid = document.getElementById('student-grid');
             grid.innerHTML = ''; 
@@ -243,35 +322,30 @@
                 let btn = document.createElement('button');
                 btn.id = `student-btn-${student.originalIndex}`;
                 btn.className = 'student-btn';
-                btn.style.order = position; // 動態排序
+                btn.style.order = position; 
                 
                 if (student.currentLap >= targetLaps) {
-                    let finalTime = student.lapTimes[student.lapTimes.length - 1];
-                    btn.innerHTML = `${student.name} <br><span>完賽: ${finalTime}</span>`;
+                    btn.innerHTML = `${student.name} <br><span>完賽: ${student.lapTimes[student.lapTimes.length - 1]}</span>`;
                     btn.classList.add('finished');
                 } else {
                     btn.innerHTML = `${student.name} <br><span>(${student.currentLap}/${targetLaps})</span>`;
                     if (student.currentLap === targetLaps - 1) btn.classList.add('last-lap');
                 }
-                
-                // 手動點擊補漏時，不傳入時間戳，讓系統抓取點擊當下的時間
                 btn.onclick = () => recordLap(student.originalIndex, null);
                 grid.appendChild(btn);
             });
         }
 
-        // 紀錄成績核心函數 (支援 AI 時間戳 override)
         function recordLap(index, customTimestampDifference = null) {
             if (!isRunning) return;
             let student = students[index];
             if (student.currentLap >= targetLaps) return; 
             
-            // 如果是 AI 傳來的時間，就用 AI 的時間；如果是手動點擊，就用現在的碼表時間
             let lapDifference = customTimestampDifference !== null ? customTimestampDifference : difference;
             let now = Date.now();
             
             if (student.lastLapTimeMs > 0 && (now - student.lastLapTimeMs) < 5000) {
-                if(!confirm(`【防誤觸】${student.name} 距離上次紀錄不到 5 秒，確定紀錄？`)) return;
+                if(!confirm(`【防誤觸】確定紀錄？`)) return;
             }
 
             student.currentLap++;
@@ -285,7 +359,6 @@
             
             renderGrid(); 
 
-            // 短暫高亮顯示最新單圈成績
             let btnElement = document.getElementById(`student-btn-${index}`);
             if(btnElement) {
                 btnElement.innerHTML = `${student.name} <br><span style="color:#FFD700; font-weight:bold;">圈: ${splitTimeStr}</span>`;
@@ -309,34 +382,29 @@
 
         function updateTimer() {
             if (!isRunning) return;
-            updatedTime = Date.now();
-            difference = updatedTime - startTime + timeSaved;
+            difference = Date.now() - startTime + timeSaved;
             document.getElementById('timer').innerText = formatTime(difference);
             timerAnimationId = requestAnimationFrame(updateTimer);
         }
 
         function startTimer() {
             if (!isRunning) {
-                startTime = Date.now();
-                isRunning = true;
+                startTime = Date.now(); isRunning = true;
                 timerAnimationId = requestAnimationFrame(updateTimer); 
                 document.getElementById('btn-start').style.display = "none";
                 document.getElementById('btn-pause').style.display = "inline-block";
                 document.getElementById('btn-zero').style.display = "inline-block";
                 document.getElementById('btn-pause').innerText = "暫停";
-                renderAIQueue(); // 顯示待確認區狀態
+                renderAIQueue();
             }
         }
 
         function pauseTimer() {
             if (isRunning) {
-                isRunning = false;
-                cancelAnimationFrame(timerAnimationId); 
+                isRunning = false; cancelAnimationFrame(timerAnimationId); 
                 timeSaved = difference;
                 document.getElementById('btn-pause').innerText = "繼續";
-            } else {
-                startTimer();
-            }
+            } else { startTimer(); }
         }
 
         function zeroTimer() {
@@ -344,10 +412,7 @@
                 isRunning = false; cancelAnimationFrame(timerAnimationId);
                 startTime = Date.now(); timeSaved = 0; difference = 0;
                 document.getElementById('timer').innerText = "00:00.00";
-                
-                aiQueue = []; // 清空待確認區
-                renderAIQueue();
-
+                aiQueue = []; renderAIQueue();
                 students.forEach(s => {
                     s.currentLap = 0; s.lapTimes = []; s.lapSplitTimes = []; 
                     s.lastLapTimeMs = 0; s.lastLapTimeDifference = 0;
@@ -359,14 +424,27 @@
         }
 
         function finishTest() {
-            isRunning = false;
-            cancelAnimationFrame(timerAnimationId);
+            isRunning = false; cancelAnimationFrame(timerAnimationId);
             document.getElementById('btn-pause').style.display = "none";
+            
+            // 匯出包含最終累計時間的 Excel
+            let exportData = students.map(s => {
+                let row = { 
+                    "姓名": s.name, 
+                    "完成圈數": `${s.currentLap} / ${targetLaps}`,
+                    "總成績": s.currentLap === targetLaps ? s.lapTimes[s.lapTimes.length - 1] : "未完賽",
+                    "最終累計時間": s.lapTimes.length > 0 ? s.lapTimes[s.lapTimes.length - 1] : "無紀錄"
+                };
+                for (let i = 0; i < targetLaps; i++) row[`第${i+1}圈`] = s.lapSplitTimes[i] || "-";
+                return row;
+            });
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "測驗成績");
+            XLSX.writeFile(wb, `視覺測驗成績_${new Date().getTime()}.xlsx`);
         }
 
-        function resetTimer() {
-            location.reload(); // 簡單的重置回設定頁面
-        }
+        function resetTimer() { location.reload(); }
         function toggleFullScreen() {
             if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } 
             else if (document.exitFullscreen) { document.exitFullscreen(); }
