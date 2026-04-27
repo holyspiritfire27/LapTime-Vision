@@ -15,7 +15,7 @@
         select, input[type="file"], input[type="number"], input[type="text"], textarea { width: 100%; padding: 8px; margin-top: 5px; font-size: 1rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
         #btn-confirm-setup { background-color: #4CAF50; color: white; padding: 15px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; flex-shrink: 0;}
         
-        /* ===== 相機掃描模態框 (新功能) ===== */
+        /* ===== 相機掃描模態框 (特徵學習) ===== */
         #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
         #scanner-container { position: relative; width: 90%; max-width: 400px; border-radius: 10px; overflow: hidden; background: #000; }
         #scanner-video { width: 100%; display: block; object-fit: cover; }
@@ -36,32 +36,46 @@
         #btn-zero { background-color: #9C27B0; color: white; }
         #btn-finish { background-color: #2196F3; color: white; }
         #btn-reset { background-color: #f44336; color: white; }
-        #btn-fullscreen { background-color: #607D8B; color: white; }
         
-        /* AI 待確認緩衝區 */
+        /* AI 待確認緩衝區 (人機協作) */
         #ai-queue-section { background-color: #ffe0b2; padding: 10px; flex-shrink: 0; display: flex; overflow-x: auto; gap: 10px; min-height: 60px; align-items: center; border-bottom: 2px solid #ff9800;}
         .ai-queue-label { font-weight: bold; color: #e65100; white-space: nowrap; margin-right: 5px;}
         .ai-card { background: white; border: 2px solid #ff9800; border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1); animation: popIn 0.3s ease; }
         @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .ai-card .stu-number { background: #333; color: #FFEB3B; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 1.1rem; }
         .ai-card .stu-info { display: flex; flex-direction: column; font-size: 0.9rem; font-weight: bold;}
         .ai-card .ai-time { font-size: 0.75rem; color: #666; font-weight: normal;}
         .ai-btn-ok { background: #4CAF50; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
         .ai-btn-no { background: #f44336; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
-        
-        /* 模擬 AI 按鈕 */
-        #btn-simulate-ai { background-color: #9C27B0; color: white; border: none; border-radius: 5px; padding: 5px 10px; margin-top: 5px; cursor: pointer; font-size: 0.8rem; }
 
-        /* 相機預覽區 */
-        #camera-section { height: 120px; background-color: #000; position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        /* ===== 相機與虛擬終點線 ===== */
+        #camera-section { height: 180px; background-color: #000; position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
         #viewfinder { width: 100%; height: 100%; object-fit: cover; }
         
+        /* 視覺辨識：虛擬終點線 */
+        #virtual-finish-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; background-color: rgba(255, 0, 0, 0.6); transform: translateX(-50%); z-index: 10; pointer-events: none; transition: background-color 0.1s, box-shadow 0.1s; }
+        #virtual-finish-line.flash { background-color: #00FF00; box-shadow: 0 0 15px #00FF00; width: 6px; }
+        .finish-line-label { position: absolute; left: 50%; top: 5px; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; z-index: 11; pointer-events: none;}
+        
+        /* 隱藏的 Canvas 用於背景影像分析 */
+        #vision-canvas { display: none; }
+        
+        /* 手動按鈕 (測試視覺用) */
+        #btn-simulate-ai { position: absolute; right: 10px; bottom: 10px; background: rgba(156, 39, 176, 0.8); color: white; border: none; border-radius: 5px; padding: 5px; font-size: 0.7rem; z-index: 20; }
+
         /* 學生按鈕網格 */
         #student-section { padding: 10px; overflow-y: auto; flex-grow: 1; }
-        #student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
-        .student-btn { padding: 15px 5px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; background-color: #2196F3; color: white; transition: background-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .student-btn span { display: block; font-size: 0.85rem; margin-top: 5px; opacity: 0.9; }
+        #student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 10px; }
+        .student-btn { padding: 12px 5px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; background-color: #2196F3; color: white; transition: background-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center;}
+        .student-btn .bib-badge { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 10px; font-size: 0.8rem; margin-bottom: 3px; font-weight: bold;}
+        .student-btn span { display: block; font-size: 0.85rem; margin-top: 3px; opacity: 0.9; }
         .student-btn.last-lap { background-color: #E91E63; } 
         .student-btn.finished { background-color: #9E9E9E; pointer-events: none; } 
+        
+        /* 匯出區 */
+        #download-section { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100; gap: 20px; }
+        .download-btn { padding: 15px 30px; text-decoration: none; border-radius: 8px; font-size: 1.2rem; font-weight: bold; color: white; border: none; cursor: pointer; text-align: center; width: 80%; max-width: 400px; box-sizing: border-box;}
+        #btn-dl-excel { background-color: #4CAF50; }
     </style>
 </head>
 <body>
@@ -75,7 +89,7 @@
         </div>
         <canvas id="snapshot-canvas" style="display:none;"></canvas>
         <div class="scanner-controls">
-            <button class="btn-scan" onclick="captureAndAnalyze()">📸 擷取並記錄特徵</button>
+            <button class="btn-scan" onclick="captureAndAnalyze()">📸 擷取特徵並輸入號碼</button>
             <button class="btn-close-scan" onclick="closeScanner()">完成 / 關閉</button>
         </div>
     </div>
@@ -86,7 +100,7 @@
         <div class="setup-group">
             <label>1. 測驗基本參數</label>
             <input type="text" id="input-test-name" placeholder="測驗名稱 / 班級">
-            <select id="sel-distance">
+            <select id="sel-distance" style="margin-top: 10px;">
                 <option value="800">800 公尺</option>
                 <option value="1600" selected>1600 公尺</option>
             </select>
@@ -98,18 +112,22 @@
         </div>
 
         <div class="setup-group">
-            <label>2. 匯入受測學生 / 視覺學習</label>
-            
+            <label>2. 選擇主攝影機 (用於越線偵測)</label>
+            <select id="sel-camera" style="margin: 0;"></select>
+        </div>
+
+        <div class="setup-group">
+            <label>3. 匯入名單與視覺特徵</label>
             <button type="button" onclick="openScanner()" style="background:#E91E63; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">
                 📷 啟動相機辨識受測號碼
             </button>
-            
             <div id="vision-profile-display">尚未記錄視覺特徵</div>
-
-            <textarea id="manual-names" rows="4" placeholder="請手動輸入或用上方相機掃描加入...&#10;例如：15號 王小明"></textarea>
+            
+            <p style="font-size: 0.8rem; color: #666; margin-bottom: 2px;">格式建議：[號碼] [姓名] (例如: 15 王小明)</p>
+            <textarea id="manual-names" rows="4" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
         </div>
 
-        <button id="btn-confirm-setup" onclick="startSetup()">儲存特徵並進入測驗</button>
+        <button id="btn-confirm-setup" onclick="startSetup()">進入視覺計時畫面</button>
     </div>
 
     <div id="test-section">
@@ -121,30 +139,71 @@
             <button id="btn-finish" class="control-btn" onclick="finishTest()">測驗完成</button>
             <button id="btn-pause" class="control-btn" onclick="pauseTimer()">暫停</button>
             <button id="btn-start" class="control-btn" onclick="startTimer()">開始測驗 (Go)</button>
-            <br>
-            <button id="btn-simulate-ai" onclick="simulateAI()">🤖 模擬 AI 視覺辨識衝線</button>
         </div>
 
         <div id="ai-queue-section">
-            <div class="ai-queue-label">AI 辨識區<br><span style="font-size:0.7rem;">等待確認</span></div>
+            <div class="ai-queue-label">視覺辨識<br><span style="font-size:0.7rem;">等待確認</span></div>
             <div id="ai-queue-container" style="display:flex; gap:10px;"></div>
         </div>
 
         <div id="camera-section">
             <video id="viewfinder" autoplay playsinline muted></video>
+            <div id="virtual-finish-line"></div>
+            <div class="finish-line-label">🔴 虛擬終點線</div>
+            <canvas id="vision-canvas"></canvas>
+            <button id="btn-simulate-ai" onclick="simulateAICrossing()">強制觸發越線測試</button>
         </div>
 
         <div id="student-section">
             <div id="student-grid"></div>
         </div>
+
+        <div id="download-section">
+            <h2 style="color: white; margin-bottom: 5px;">🎉 測驗已結束</h2>
+            <button id="btn-dl-excel" class="download-btn" onclick="exportExcel()">📊 下載成績單 (.xlsx)</button>
+        </div>
     </div>
 
     <script>
         // ==========================================
-        // 模組一：視覺特徵掃描與學習引擎 (Vision Calibration)
+        // 系統全局變數
+        // ==========================================
+        let targetLaps = 8; 
+        let students = []; 
+        let aiQueue = []; 
+        let aiQueueCounter = 0; 
+        let isRunning = false;
+        let startTime, updatedTime, difference = 0, timeSaved = 0;
+        let timerAnimationId; 
+        
+        let visionProfiles = []; // 儲存號碼特徵
+        let mainCameraStream = null;
+        let visionAnimationId = null;
+
+        // 載入相機選單
+        window.addEventListener('load', async () => {
+            const cameraSelect = document.getElementById('sel-camera');
+            try {
+                const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `攝影機 ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+                tempStream.getTracks().forEach(track => track.stop());
+            } catch (err) {
+                cameraSelect.innerHTML = '<option value="none">無相機權限</option>';
+            }
+        });
+
+        // ==========================================
+        // 模組一：視覺特徵掃描 (設定頁面)
         // ==========================================
         let scannerStream = null;
-        let visionProfiles = []; // 儲存學習到的特徵 { number, bibColor, textColor }
 
         async function openScanner() {
             const modal = document.getElementById('scanner-modal');
@@ -154,15 +213,13 @@
                 scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = scannerStream;
             } catch (err) {
-                alert("無法開啟相機，請確認瀏覽器權限！");
+                alert("無法開啟相機！");
                 closeScanner();
             }
         }
 
         function closeScanner() {
-            if (scannerStream) {
-                scannerStream.getTracks().forEach(t => t.stop());
-            }
+            if (scannerStream) scannerStream.getTracks().forEach(t => t.stop());
             document.getElementById('scanner-modal').style.display = 'none';
         }
 
@@ -171,18 +228,14 @@
             const canvas = document.getElementById('snapshot-canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             
-            // 設定畫布與影片比例相同
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 模擬擷取中央 150x150 區域 (配合黃色虛線框)
             const boxSize = 150;
             const startX = (canvas.width - boxSize) / 2;
             const startY = (canvas.height - boxSize) / 2;
             const imgData = ctx.getImageData(startX, startY, boxSize, boxSize).data;
 
-            // 簡易特徵萃取演算法：尋找底色 (平均色) 與字色 (最暗對比色)
             let rSum = 0, gSum = 0, bSum = 0, count = 0;
             let minBright = 255, darkColor = {r:0, g:0, b:0};
 
@@ -197,22 +250,18 @@
             let bibHex = rgbToHex(avgColor.r, avgColor.g, avgColor.b);
             let textHex = rgbToHex(darkColor.r, darkColor.g, darkColor.b);
 
-            // 模擬 OCR 系統詢問教師確認
-            let detectedNum = prompt(`【視覺特徵已分析】\n系統偵測到底色: ${bibHex}, 字色: ${textHex}\n\n請輸入系統辨識到的這件號碼：`, "");
+            let detectedNum = prompt(`【特徵已分析】請輸入該號碼衣上的數字：`, "");
             
             if (detectedNum && detectedNum.trim() !== "") {
-                // 記錄特徵
-                visionProfiles.push({ number: detectedNum.trim(), bibColor: bibHex, textColor: textHex });
+                let num = detectedNum.trim();
+                visionProfiles.push({ number: num, bibColor: bibHex, textColor: textHex });
                 
-                // 自動將號碼加入名單輸入框
                 let textArea = document.getElementById('manual-names');
-                let currentText = textArea.value;
-                textArea.value = currentText + (currentText ? '\n' : '') + `受測號碼 ${detectedNum.trim()}`;
+                textArea.value += (textArea.value ? '\n' : '') + `${num} 號學生`;
                 
-                // 更新設定畫面上的特徵顯示
                 const profileDisplay = document.getElementById('vision-profile-display');
                 profileDisplay.style.display = 'block';
-                profileDisplay.innerHTML = `🎯 已學習視覺線索：<br>底色 <span style="background:${bibHex}; width:15px; height:15px; display:inline-block; border:1px solid #000;"></span> 字色 <span style="background:${textHex}; width:15px; height:15px; display:inline-block; border:1px solid #000;"></span> (共 ${visionProfiles.length} 筆資料)`;
+                profileDisplay.innerHTML = `🎯 已學習視覺線索：底色 <span style="background:${bibHex}; width:15px; height:15px; display:inline-block;"></span> 字色 <span style="background:${textHex}; width:15px; height:15px; display:inline-block;"></span> (共 ${visionProfiles.length} 筆)`;
             }
         }
 
@@ -221,52 +270,152 @@
         }
 
         // ==========================================
-        // 模組二：主系統邏輯 (繼承 LapTime-Vision 人機協作版)
+        // 進入測驗畫面與名單解析
         // ==========================================
-        let targetLaps = 8; 
-        let students = []; 
-        let aiQueue = []; 
-        let aiQueueCounter = 0; 
-        let isRunning = false;
-        let startTime, updatedTime, difference = 0, timeSaved = 0;
-        let timerAnimationId; 
-
-        function startSetup() {
+        async function startSetup() {
             const dist = parseInt(document.getElementById('sel-distance').value);
             const track = parseInt(document.getElementById('sel-track').value);
             targetLaps = Math.ceil(dist / track); 
 
-            let finalNames = document.getElementById('manual-names').value.trim().split('\n').map(n => n.trim()).filter(n => n !== "");
-            if (finalNames.length === 0) {
-                alert("請至少輸入一位學生，或使用相機辨識號碼加入！");
-                return;
-            }
-
-            students = finalNames.map((name, index) => {
-                return { 
-                    id: index, name: name, currentLap: 0, lapTimes: [], 
-                    lapSplitTimes: [], lastLapTimeMs: 0, lastLapTimeDifference: 0, timeoutId: null 
-                };
+            let rawNames = document.getElementById('manual-names').value.trim().split('\n');
+            students = [];
+            
+            rawNames.forEach((line, index) => {
+                if(!line.trim()) return;
+                // 解析 "號碼 姓名" 格式 (例如 "15 王小明")
+                let match = line.trim().match(/^(\d+)?\s*(.*)$/);
+                let bibNumber = match[1] ? match[1] : "-";
+                let name = match[2] ? match[2] : `學生${index+1}`;
+                
+                students.push({
+                    id: index,
+                    bib: bibNumber,
+                    name: name,
+                    currentLap: 0, lapTimes: [], lapSplitTimes: [], 
+                    lastLapTimeMs: 0, lastLapTimeDifference: 0, timeoutId: null
+                });
             });
+
+            if (students.length === 0) { alert("請至少輸入一位學生！"); return; }
 
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('test-section').style.display = 'flex';
             
             renderGrid();
+            renderAIQueue();
+            
+            // 啟動主相機與越線偵測引擎
+            await startMainCamera();
         }
 
-        // --- 人機協作：AI 緩衝區邏輯 ---
-        function simulateAI() {
-            if (!isRunning) return alert("請先點擊【開始測驗】！");
+        // ==========================================
+        // 模組二：實時影像越線偵測 (Line Crossing Detection)
+        // ==========================================
+        async function startMainCamera() {
+            const selectedDeviceId = document.getElementById('sel-camera').value;
+            const viewfinder = document.getElementById('viewfinder');
+            
+            if (selectedDeviceId === 'none') return;
+
+            try {
+                const constraints = { video: { deviceId: { exact: selectedDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } } };
+                mainCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                viewfinder.srcObject = mainCameraStream;
+                
+                // 等待影片載入後啟動影像分析
+                viewfinder.onloadedmetadata = () => {
+                    viewfinder.play();
+                    startVisionLoop();
+                };
+            } catch (err) {
+                console.error("相機載入失敗", err);
+            }
+        }
+
+        let lastLineData = null;
+        let crossingCooldown = false;
+
+        function startVisionLoop() {
+            const video = document.getElementById('viewfinder');
+            const canvas = document.getElementById('vision-canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            function processFrame() {
+                if (!isRunning || video.paused || video.ended) {
+                    visionAnimationId = requestAnimationFrame(processFrame);
+                    return;
+                }
+
+                // 設定隱藏 Canvas 大小與影片一致
+                if(canvas.width !== video.videoWidth) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                }
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // 擷取畫面正中央的一條垂直線像素 (x = width/2)
+                const centerX = Math.floor(canvas.width / 2);
+                const lineData = ctx.getImageData(centerX, 0, 1, canvas.height).data;
+
+                // 比對前一個 frame，計算像素動態差異 (Motion Detection on Line)
+                if (lastLineData) {
+                    let diffTotal = 0;
+                    for(let i=0; i<lineData.length; i+=4) {
+                        diffTotal += Math.abs(lineData[i] - lastLineData[i]);
+                        diffTotal += Math.abs(lineData[i+1] - lastLineData[i+1]);
+                        diffTotal += Math.abs(lineData[i+2] - lastLineData[i+2]);
+                    }
+                    let avgDiff = diffTotal / (lineData.length / 4);
+                    
+                    // 當線上像素產生劇烈變化 (有人穿過終點線)
+                    if (avgDiff > 45 && !crossingCooldown) {
+                        handleLineCrossing();
+                    }
+                }
+
+                lastLineData = new Uint8ClampedArray(lineData);
+                visionAnimationId = requestAnimationFrame(processFrame);
+            }
+            visionAnimationId = requestAnimationFrame(processFrame);
+        }
+
+        function handleLineCrossing() {
+            // 1. 視覺回饋：終點線閃爍綠光
+            const lineEl = document.getElementById('virtual-finish-line');
+            lineEl.classList.add('flash');
+            setTimeout(() => lineEl.classList.remove('flash'), 300);
+
+            // 2. 觸發 CD 避免同一個人觸發多次
+            crossingCooldown = true;
+            setTimeout(() => crossingCooldown = false, 1500);
+
+            // 3. 呼叫 OCR 模擬系統，將捕捉到的人丟進待確認區
+            simulateAICrossing();
+        }
+
+        // ==========================================
+        // 模組三：OCR 號碼辨識模擬與人機協作
+        // ==========================================
+        function simulateAICrossing() {
+            if (!isRunning) return;
+            
+            // 模擬電腦視覺 OCR：從還在跑的學生中抓取號碼
             let activeStudents = students.filter(s => s.currentLap < targetLaps);
             if (activeStudents.length === 0) return;
-            let randomStudent = activeStudents[Math.floor(Math.random() * activeStudents.length)];
+            
+            // 隨機模擬 OCR 讀取到某個學生的號碼
+            let detectedStudent = activeStudents[Math.floor(Math.random() * activeStudents.length)];
 
+            // 擷取最精確的「撞線時間戳」
             let exactTimestampDifference = difference;
+
+            // 加入待確認區
             let queueItem = {
                 uid: aiQueueCounter++,
-                studentId: randomStudent.id,
-                name: randomStudent.name,
+                studentId: detectedStudent.id,
+                bib: detectedStudent.bib,
+                name: detectedStudent.name,
                 timestampDiff: exactTimestampDifference,
                 timeStr: formatTime(exactTimestampDifference)
             };
@@ -278,12 +427,13 @@
         function renderAIQueue() {
             const container = document.getElementById('ai-queue-container');
             container.innerHTML = '';
-            if (aiQueue.length === 0) { container.innerHTML = '<span style="color:#aaa; font-size:0.9rem;">目前無待確認資料</span>'; return; }
+            if (aiQueue.length === 0) { container.innerHTML = '<span style="color:#aaa; font-size:0.9rem;">目前無撞線動態</span>'; return; }
 
             aiQueue.forEach(item => {
                 let card = document.createElement('div');
                 card.className = 'ai-card';
                 card.innerHTML = `
+                    <div class="stu-number">${item.bib}</div>
                     <div class="stu-info">${item.name}<span class="ai-time">⏱ ${item.timeStr}</span></div>
                     <button class="ai-btn-ok" onclick="confirmAI(${item.uid})">✔️</button>
                     <button class="ai-btn-no" onclick="discardAI(${item.uid})">❌</button>
@@ -295,6 +445,7 @@
         function confirmAI(uid) {
             let itemIndex = aiQueue.findIndex(q => q.uid === uid);
             if (itemIndex > -1) {
+                // 以捕捉到的「撞線時間」寫入成績
                 recordLap(aiQueue[itemIndex].studentId, aiQueue[itemIndex].timestampDiff);
                 aiQueue.splice(itemIndex, 1);
                 renderAIQueue();
@@ -306,7 +457,9 @@
             if (itemIndex > -1) { aiQueue.splice(itemIndex, 1); renderAIQueue(); }
         }
 
-        // --- 核心動態排位網格 ---
+        // ==========================================
+        // 核心計時與動態排位網格
+        // ==========================================
         function renderGrid() {
             const grid = document.getElementById('student-grid');
             grid.innerHTML = ''; 
@@ -324,13 +477,17 @@
                 btn.className = 'student-btn';
                 btn.style.order = position; 
                 
+                let bibDisplay = student.bib !== "-" ? `<div class="bib-badge">#${student.bib}</div>` : '';
+
                 if (student.currentLap >= targetLaps) {
-                    btn.innerHTML = `${student.name} <br><span>完賽: ${student.lapTimes[student.lapTimes.length - 1]}</span>`;
+                    btn.innerHTML = `${bibDisplay}${student.name} <br><span>完賽: ${student.lapTimes[student.lapTimes.length - 1]}</span>`;
                     btn.classList.add('finished');
                 } else {
-                    btn.innerHTML = `${student.name} <br><span>(${student.currentLap}/${targetLaps})</span>`;
+                    btn.innerHTML = `${bibDisplay}${student.name} <br><span>(${student.currentLap}/${targetLaps})</span>`;
                     if (student.currentLap === targetLaps - 1) btn.classList.add('last-lap');
                 }
+                
+                // 老師手動補漏點擊，採用當下時間
                 btn.onclick = () => recordLap(student.originalIndex, null);
                 grid.appendChild(btn);
             });
@@ -361,14 +518,11 @@
 
             let btnElement = document.getElementById(`student-btn-${index}`);
             if(btnElement) {
-                btnElement.innerHTML = `${student.name} <br><span style="color:#FFD700; font-weight:bold;">圈: ${splitTimeStr}</span>`;
+                let bibDisplay = student.bib !== "-" ? `<div class="bib-badge">#${student.bib}</div>` : '';
+                btnElement.innerHTML = `${bibDisplay}${student.name} <br><span style="color:#FFD700; font-weight:bold;">圈: ${splitTimeStr}</span>`;
                 if (student.timeoutId) clearTimeout(student.timeoutId);
                 student.timeoutId = setTimeout(() => {
-                    if (student.currentLap === targetLaps) {
-                        btnElement.innerHTML = `${student.name} <br><span>完賽: ${student.lapTimes[student.lapTimes.length - 1]}</span>`;
-                    } else {
-                        btnElement.innerHTML = `${student.name} <br><span>(${student.currentLap}/${targetLaps})</span>`;
-                    }
+                    renderGrid(); // 時間到後重置顯示狀態
                 }, 2500);
             }
         }
@@ -408,7 +562,7 @@
         }
 
         function zeroTimer() {
-            if (confirm("確定要將時間歸零，並清除所有學生的圈數紀錄嗎？")) {
+            if (confirm("確定要將時間歸零，並清除所有學生的紀錄嗎？")) {
                 isRunning = false; cancelAnimationFrame(timerAnimationId);
                 startTime = Date.now(); timeSaved = 0; difference = 0;
                 document.getElementById('timer').innerText = "00:00.00";
@@ -427,9 +581,13 @@
             isRunning = false; cancelAnimationFrame(timerAnimationId);
             document.getElementById('btn-pause').style.display = "none";
             
-            // 匯出包含最終累計時間的 Excel
+            document.getElementById('download-section').style.display = "flex";
+        }
+        
+        function exportExcel() {
             let exportData = students.map(s => {
                 let row = { 
+                    "號碼": s.bib,
                     "姓名": s.name, 
                     "完成圈數": `${s.currentLap} / ${targetLaps}`,
                     "總成績": s.currentLap === targetLaps ? s.lapTimes[s.lapTimes.length - 1] : "未完賽",
@@ -442,6 +600,7 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "測驗成績");
             XLSX.writeFile(wb, `視覺測驗成績_${new Date().getTime()}.xlsx`);
+            document.getElementById('download-section').style.display = 'none';
         }
 
         function resetTimer() { location.reload(); }
