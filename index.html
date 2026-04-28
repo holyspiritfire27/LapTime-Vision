@@ -3,611 +3,1399 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LapTime-Vision 視覺計時系統</title>
+    <title>LapTime-Vision v2 視覺計時系統</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f0f0f0; }
-        
-        /* ===== 設定畫面 ===== */
-        #setup-section { padding: 20px; background: white; flex-grow: 1; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
-        .setup-group { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #fafafa; }
-        .setup-group label { display: block; margin-bottom: 10px; font-weight: bold; }
-        select, input[type="file"], input[type="number"], input[type="text"], textarea { width: 100%; padding: 8px; margin-top: 5px; font-size: 1rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
-        #btn-confirm-setup { background-color: #4CAF50; color: white; padding: 15px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; flex-shrink: 0;}
-        
-        /* ===== 相機掃描模態框 (特徵學習) ===== */
-        #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
-        #scanner-container { position: relative; width: 90%; max-width: 400px; border-radius: 10px; overflow: hidden; background: #000; }
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        :root {
+            --bg: #0a0e1a;
+            --panel: #121929;
+            --border: #1e2d4a;
+            --accent: #00d4ff;
+            --accent2: #ff6b35;
+            --green: #00e676;
+            --red: #ff1744;
+            --yellow: #ffea00;
+            --text: #e8f4fc;
+            --muted: #7a9ab5;
+            --card: #162035;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ===== SETUP SECTION ===== */
+        #setup-section {
+            padding: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .setup-header {
+            text-align: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .setup-header h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.8rem;
+            color: var(--accent);
+            letter-spacing: 2px;
+        }
+        .setup-header p { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+        .setup-group {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .setup-group .group-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        select, input[type="text"], input[type="number"], textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.95rem;
+            font-family: 'Noto Sans TC', sans-serif;
+            margin-top: 6px;
+        }
+        select:focus, input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        textarea { resize: vertical; }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--accent), #0099bb);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            margin-top: 6px;
+        }
+        .btn-secondary {
+            width: 100%;
+            padding: 10px;
+            background: var(--card);
+            border: 1px solid var(--accent2);
+            border-radius: 8px;
+            color: var(--accent2);
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 6px;
+        }
+
+        /* ===== SCANNER MODAL ===== */
+        #scanner-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 20px;
+            overflow-y: auto;
+            gap: 14px;
+        }
+        #scanner-modal.active { display: flex; }
+        .scanner-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.4rem;
+            color: var(--accent);
+            letter-spacing: 2px;
+        }
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid var(--accent);
+        }
         #scanner-video { width: 100%; display: block; object-fit: cover; }
-        #scanner-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 150px; height: 150px; border: 3px dashed #FFEB3B; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); pointer-events: none; }
-        .scanner-controls { display: flex; gap: 10px; margin-top: 20px; }
-        .btn-scan { background: #2196F3; color: white; border: none; padding: 12px 20px; font-size: 1.1rem; border-radius: 8px; font-weight: bold; cursor: pointer;}
-        .btn-close-scan { background: #f44336; color: white; border: none; padding: 12px 20px; font-size: 1.1rem; border-radius: 8px; font-weight: bold; cursor: pointer;}
-        #vision-profile-display { margin-top: 10px; font-size: 0.85rem; color: #4CAF50; font-weight: bold; background: #e8f5e9; padding: 8px; border-radius: 5px; display: none; }
+        #scanner-overlay {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 160px; height: 120px;
+            border: 3px dashed var(--yellow);
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+            pointer-events: none;
+        }
+        .scanner-overlay-label {
+            position: absolute;
+            bottom: 6px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem; color: var(--yellow);
+            background: rgba(0,0,0,0.7);
+            padding: 2px 8px; border-radius: 4px;
+        }
+        .scanner-btns { display: flex; gap: 10px; width: 100%; max-width: 400px; }
+        .scanner-btns button {
+            flex: 1; padding: 12px;
+            border: none; border-radius: 8px;
+            font-weight: 700; font-size: 0.95rem; cursor: pointer;
+        }
+        #btn-capture { background: var(--green); color: #000; }
+        #btn-close-scan { background: var(--red); color: white; }
 
-        /* ===== 測驗畫面 ===== */
-        #test-section { display: none; flex-direction: column; height: 100vh; position: relative; }
-        #top-section { padding: 10px; text-align: center; background-color: #333; color: white; flex-shrink: 0; }
-        #timer { font-size: 2.5rem; font-weight: bold; font-variant-numeric: tabular-nums; margin-bottom: 5px; }
-        button.control-btn { padding: 8px 12px; font-size: 1rem; margin: 3px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #btn-start { background-color: #4CAF50; color: white; }
+        /* ===== OCR 辨識結果面板 ===== */
+        #ocr-result-panel {
+            display: none;
+            width: 100%; max-width: 400px;
+            background: var(--panel);
+            border: 2px solid var(--yellow);
+            border-radius: 10px;
+            padding: 14px;
+            gap: 10px;
+            flex-direction: column;
+        }
+        #ocr-result-panel.active { display: flex; }
+        .ocr-result-title { font-size: 0.8rem; color: var(--yellow); font-weight: 700; }
+        .ocr-detected-num {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2.5rem;
+            color: white;
+            text-align: center;
+            letter-spacing: 4px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .ocr-color-preview {
+            display: flex; gap: 10px; align-items: center;
+            font-size: 0.85rem; color: var(--muted);
+        }
+        .color-chip {
+            width: 30px; height: 30px;
+            border-radius: 6px;
+            border: 1px solid #333;
+        }
+        .ocr-confirm-row { display: flex; gap: 8px; }
+        .ocr-confirm-row button {
+            flex: 1; padding: 10px;
+            border: none; border-radius: 8px;
+            font-weight: 700; font-size: 0.9rem; cursor: pointer;
+        }
+        #btn-ocr-correct { background: var(--green); color: #000; }
+        #btn-ocr-wrong { background: var(--red); color: white; }
+        .manual-override-row {
+            display: none;
+            gap: 8px;
+            align-items: center;
+        }
+        .manual-override-row.active { display: flex; }
+        .manual-override-row input {
+            flex: 1; margin-top: 0;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.2rem;
+            text-align: center;
+        }
+        .manual-override-row button {
+            padding: 10px 16px;
+            background: var(--accent);
+            border: none; border-radius: 6px;
+            color: #000; font-weight: 700; cursor: pointer;
+        }
+
+        /* ===== 視覺特徵清單 ===== */
+        #profile-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .profile-badge {
+            display: flex; align-items: center; gap: 6px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 10px 4px 6px;
+            font-size: 0.85rem;
+        }
+        .profile-badge .badge-num {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--yellow);
+        }
+        .profile-badge .badge-colors { display: flex; gap: 3px; }
+        .profile-badge .badge-colors span {
+            width: 14px; height: 14px;
+            border-radius: 3px;
+            border: 1px solid #333;
+            display: inline-block;
+        }
+
+        /* ===== TEST SECTION ===== */
+        #test-section { display: none; flex-direction: column; height: 100vh; }
+
+        /* Top bar */
+        #top-bar {
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 12px;
+            flex-shrink: 0;
+        }
+        #timer {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-align: center;
+            letter-spacing: 3px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+        .control-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .ctrl-btn {
+            padding: 7px 14px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+        }
+        #btn-start { background: var(--green); color: #000; }
         #btn-pause, #btn-zero, #btn-finish { display: none; }
-        #btn-pause { background-color: #FF9800; color: white; }
-        #btn-zero { background-color: #9C27B0; color: white; }
-        #btn-finish { background-color: #2196F3; color: white; }
-        #btn-reset { background-color: #f44336; color: white; }
-        
-        /* AI 待確認緩衝區 (人機協作) */
-        #ai-queue-section { background-color: #ffe0b2; padding: 10px; flex-shrink: 0; display: flex; overflow-x: auto; gap: 10px; min-height: 60px; align-items: center; border-bottom: 2px solid #ff9800;}
-        .ai-queue-label { font-weight: bold; color: #e65100; white-space: nowrap; margin-right: 5px;}
-        .ai-card { background: white; border: 2px solid #ff9800; border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1); animation: popIn 0.3s ease; }
-        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-        .ai-card .stu-number { background: #333; color: #FFEB3B; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 1.1rem; }
-        .ai-card .stu-info { display: flex; flex-direction: column; font-size: 0.9rem; font-weight: bold;}
-        .ai-card .ai-time { font-size: 0.75rem; color: #666; font-weight: normal;}
-        .ai-btn-ok { background: #4CAF50; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
-        .ai-btn-no { background: #f44336; color: white; border: none; border-radius: 4px; padding: 5px 10px; font-weight: bold; cursor: pointer; }
+        #btn-pause { background: var(--accent2); color: white; }
+        #btn-zero { background: #9C27B0; color: white; }
+        #btn-finish { background: var(--accent); color: #000; }
+        #btn-reset { background: var(--red); color: white; }
+        #btn-fullscreen { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+        #btn-edit-line { background: #5c35ff; color: white; }
 
-        /* ===== 相機與虛擬終點線 ===== */
-        #camera-section { height: 180px; background-color: #000; position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-        #viewfinder { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* 視覺辨識：虛擬終點線 */
-        #virtual-finish-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; background-color: rgba(255, 0, 0, 0.6); transform: translateX(-50%); z-index: 10; pointer-events: none; transition: background-color 0.1s, box-shadow 0.1s; }
-        #virtual-finish-line.flash { background-color: #00FF00; box-shadow: 0 0 15px #00FF00; width: 6px; }
-        .finish-line-label { position: absolute; left: 50%; top: 5px; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; z-index: 11; pointer-events: none;}
-        
-        /* 隱藏的 Canvas 用於背景影像分析 */
+        /* AI confirm queue */
+        #ai-queue-bar {
+            background: #1a1000;
+            border-bottom: 2px solid var(--accent2);
+            padding: 8px 10px;
+            flex-shrink: 0;
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            min-height: 58px;
+            align-items: center;
+        }
+        .queue-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--accent2);
+            white-space: nowrap;
+            margin-right: 4px;
+            line-height: 1.3;
+        }
+        .ai-card {
+            background: var(--card);
+            border: 1.5px solid var(--accent2);
+            border-radius: 8px;
+            padding: 5px 8px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            animation: popIn 0.25s ease;
+        }
+        @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .ai-card .bib-tag {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: #222;
+            color: var(--yellow);
+            padding: 2px 7px;
+            border-radius: 5px;
+            min-width: 32px;
+            text-align: center;
+        }
+        .ai-card .ai-name { font-size: 0.85rem; font-weight: 700; line-height: 1.3; }
+        .ai-card .ai-time { font-size: 0.7rem; color: var(--muted); }
+        .ai-card .ai-ok { background: var(--green); color: #000; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+        .ai-card .ai-no { background: var(--red); color: white; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+        .ai-card .ai-edit { background: #5c35ff; color: white; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+
+        /* Camera section */
+        #camera-section {
+            height: 200px;
+            background: #000;
+            position: relative;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        #viewfinder {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        #finish-line-canvas {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #finish-line-canvas.editable { pointer-events: all; cursor: crosshair; }
+
+        /* Finish line edit overlay */
+        #line-edit-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(92,53,255,0.3);
+            z-index: 9;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+        }
+        #line-edit-overlay.active { display: flex; }
+        .line-edit-hint {
+            background: rgba(0,0,0,0.8);
+            color: var(--yellow);
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 6px 14px;
+            border-radius: 20px;
+        }
+        .line-edit-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .line-edit-buttons button {
+            padding: 7px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        #btn-save-line { background: var(--green); color: #000; }
+        #btn-reset-line { background: var(--accent2); color: white; }
+
         #vision-canvas { display: none; }
-        
-        /* 手動按鈕 (測試視覺用) */
-        #btn-simulate-ai { position: absolute; right: 10px; bottom: 10px; background: rgba(156, 39, 176, 0.8); color: white; border: none; border-radius: 5px; padding: 5px; font-size: 0.7rem; z-index: 20; }
+        #btn-simulate { position: absolute; right: 8px; bottom: 8px; z-index: 20; background: rgba(92,53,255,0.85); color: white; border: none; border-radius: 5px; padding: 5px 8px; font-size: 0.7rem; cursor: pointer; }
 
-        /* 學生按鈕網格 */
+        /* Student grid */
         #student-section { padding: 10px; overflow-y: auto; flex-grow: 1; }
-        #student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 10px; }
-        .student-btn { padding: 12px 5px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; background-color: #2196F3; color: white; transition: background-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center;}
-        .student-btn .bib-badge { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 10px; font-size: 0.8rem; margin-bottom: 3px; font-weight: bold;}
-        .student-btn span { display: block; font-size: 0.85rem; margin-top: 3px; opacity: 0.9; }
-        .student-btn.last-lap { background-color: #E91E63; } 
-        .student-btn.finished { background-color: #9E9E9E; pointer-events: none; } 
-        
-        /* 匯出區 */
-        #download-section { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100; gap: 20px; }
-        .download-btn { padding: 15px 30px; text-decoration: none; border-radius: 8px; font-size: 1.2rem; font-weight: bold; color: white; border: none; cursor: pointer; text-align: center; width: 80%; max-width: 400px; box-sizing: border-box;}
-        #btn-dl-excel { background-color: #4CAF50; }
+        #student-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+            gap: 8px;
+        }
+        .student-btn {
+            padding: 10px 5px;
+            font-size: 0.9rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            background: var(--card);
+            color: var(--text);
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+        .student-btn:active { transform: scale(0.94); }
+        .student-btn .bib-badge {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--yellow);
+            background: rgba(0,0,0,0.4);
+            padding: 1px 7px;
+            border-radius: 10px;
+        }
+        .student-btn span { font-size: 0.8rem; opacity: 0.85; }
+        .student-btn.running { background: #0d2a3a; border-color: var(--accent); }
+        .student-btn.last-lap { background: #2a0d1a; border-color: var(--red); }
+        .student-btn.finished { background: #111; border-color: #333; color: #555; pointer-events: none; }
+        .student-btn.just-crossed { background: #0a2a14; border-color: var(--green); }
+
+        /* Manual correction modal */
+        #correction-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 500;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        #correction-modal.active { display: flex; }
+        .correction-box {
+            background: var(--panel);
+            border: 2px solid var(--accent2);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .correction-box h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.3rem;
+            color: var(--accent2);
+        }
+        .correction-box .detected-num-display {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 3rem;
+            text-align: center;
+            color: white;
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 6px;
+            letter-spacing: 4px;
+        }
+        .correction-box p { font-size: 0.85rem; color: var(--muted); }
+        .correction-box input {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.5rem;
+            text-align: center;
+            letter-spacing: 3px;
+        }
+        .correction-btns { display: flex; gap: 8px; }
+        .correction-btns button {
+            flex: 1; padding: 11px;
+            border: none; border-radius: 8px;
+            font-weight: 700; font-size: 0.95rem; cursor: pointer;
+        }
+        #btn-correction-confirm { background: var(--green); color: #000; }
+        #btn-correction-cancel { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+
+        /* Download overlay */
+        #download-section {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.92);
+            z-index: 200;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+        #download-section.active { display: flex; }
+        #download-section h2 { font-family: 'Rajdhani', sans-serif; font-size: 2rem; color: var(--green); }
+        .dl-btn {
+            width: 80%; max-width: 360px;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        #btn-dl-excel { background: var(--green); color: #000; }
+        #btn-close-download { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     </style>
 </head>
 <body>
 
-    <div id="scanner-modal">
-        <h3 style="color: white; margin-bottom: 10px;">號碼衣特徵學習</h3>
-        <p style="color: #ccc; font-size: 0.9rem; margin-top: 0;">請將號碼衣置於黃色虛線框內</p>
-        <div id="scanner-container">
-            <video id="scanner-video" autoplay playsinline muted></video>
-            <div id="scanner-overlay"></div>
+<!-- ===================== SETUP SECTION ===================== -->
+<div id="setup-section">
+    <div class="setup-header">
+        <h1>⚡ LapTime-Vision v2</h1>
+        <p>智慧視覺跑步計時系統</p>
+    </div>
+
+    <!-- 基本參數 -->
+    <div class="setup-group">
+        <div class="group-title">📋 測驗基本參數</div>
+        <input type="text" id="input-test-name" placeholder="測驗名稱 / 班級">
+        <select id="sel-distance" style="margin-top:8px;">
+            <option value="800">800 公尺</option>
+            <option value="1600" selected>1600 公尺</option>
+        </select>
+        <select id="sel-track" style="margin-top:8px;">
+            <option value="200" selected>200 公尺跑道</option>
+            <option value="300">300 公尺跑道</option>
+            <option value="400">400 公尺跑道</option>
+        </select>
+    </div>
+
+    <!-- 相機 -->
+    <div class="setup-group">
+        <div class="group-title">📷 主攝影機 (越線偵測)</div>
+        <select id="sel-camera"></select>
+    </div>
+
+    <!-- 號碼衣特徵學習 -->
+    <div class="setup-group">
+        <div class="group-title">🎽 號碼衣視覺學習</div>
+        <button class="btn-secondary" onclick="openScanner()">📸 啟動相機辨識號碼衣</button>
+        <div id="profile-list"></div>
+        <p style="font-size:0.78rem; color:var(--muted); margin-top:10px;">格式：[號碼] [姓名]（例：15 王小明）</p>
+        <textarea id="manual-names" rows="5" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
+    </div>
+
+    <button class="btn-primary" onclick="startSetup()">進入視覺計時畫面 →</button>
+</div>
+
+<!-- ===================== SCANNER MODAL ===================== -->
+<div id="scanner-modal">
+    <div class="scanner-title">🎽 號碼衣特徵學習</div>
+    <p style="color:var(--muted); font-size:0.85rem; text-align:center;">將號碼衣置於黃色虛線框中，拍攝後確認辨識結果</p>
+
+    <div id="scanner-container">
+        <video id="scanner-video" autoplay playsinline muted></video>
+        <div id="scanner-overlay"></div>
+        <div class="scanner-overlay-label">號碼衣對準此區域</div>
+    </div>
+    <canvas id="snapshot-canvas" style="display:none;"></canvas>
+
+    <!-- OCR 結果面板 -->
+    <div id="ocr-result-panel">
+        <div class="ocr-result-title">🔍 系統辨識結果</div>
+        <div id="ocr-detected-num" class="ocr-detected-num">--</div>
+        <div class="ocr-color-preview">
+            <span>底色</span>
+            <div id="bib-color-chip" class="color-chip"></div>
+            <span style="margin-left:10px;">字色</span>
+            <div id="text-color-chip" class="color-chip"></div>
         </div>
-        <canvas id="snapshot-canvas" style="display:none;"></canvas>
-        <div class="scanner-controls">
-            <button class="btn-scan" onclick="captureAndAnalyze()">📸 擷取特徵並輸入號碼</button>
-            <button class="btn-close-scan" onclick="closeScanner()">完成 / 關閉</button>
+        <p style="font-size:0.8rem; color:var(--muted);">辨識是否正確？</p>
+        <div class="ocr-confirm-row">
+            <button id="btn-ocr-correct" onclick="confirmOcrResult()">✔️ 正確</button>
+            <button id="btn-ocr-wrong" onclick="showManualOcrInput()">✏️ 手動修正</button>
+        </div>
+        <div id="manual-override-row" class="manual-override-row">
+            <input type="number" id="manual-bib-input" placeholder="輸入正確號碼">
+            <button onclick="saveManualBib()">確認</button>
         </div>
     </div>
 
-    <div id="setup-section">
-        <h2 style="margin-top: 0; margin-bottom: 5px;">LapTime-Vision 設定</h2>
-        
-        <div class="setup-group">
-            <label>1. 測驗基本參數</label>
-            <input type="text" id="input-test-name" placeholder="測驗名稱 / 班級">
-            <select id="sel-distance" style="margin-top: 10px;">
-                <option value="800">800 公尺</option>
-                <option value="1600" selected>1600 公尺</option>
-            </select>
-            <select id="sel-track" style="margin-top: 10px;">
-                <option value="200" selected>200 公尺跑道</option>
-                <option value="300">300 公尺跑道</option>
-                <option value="400">400 公尺跑道</option>
-            </select>
-        </div>
-
-        <div class="setup-group">
-            <label>2. 選擇主攝影機 (用於越線偵測)</label>
-            <select id="sel-camera" style="margin: 0;"></select>
-        </div>
-
-        <div class="setup-group">
-            <label>3. 匯入名單與視覺特徵</label>
-            <button type="button" onclick="openScanner()" style="background:#E91E63; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">
-                📷 啟動相機辨識受測號碼
-            </button>
-            <div id="vision-profile-display">尚未記錄視覺特徵</div>
-            
-            <p style="font-size: 0.8rem; color: #666; margin-bottom: 2px;">格式建議：[號碼] [姓名] (例如: 15 王小明)</p>
-            <textarea id="manual-names" rows="4" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
-        </div>
-
-        <button id="btn-confirm-setup" onclick="startSetup()">進入視覺計時畫面</button>
+    <div class="scanner-btns">
+        <button id="btn-capture" onclick="captureAndAnalyze()">📸 擷取分析</button>
+        <button id="btn-close-scan" onclick="closeScanner()">完成 / 關閉</button>
     </div>
+</div>
 
-    <div id="test-section">
-        <div id="top-section">
-            <div id="timer">00:00.00</div>
-            <button id="btn-fullscreen" class="control-btn" onclick="toggleFullScreen()">全螢幕</button>
-            <button id="btn-reset" class="control-btn" onclick="resetTimer()">回到設定</button>
-            <button id="btn-zero" class="control-btn" onclick="zeroTimer()">時間歸零</button>
-            <button id="btn-finish" class="control-btn" onclick="finishTest()">測驗完成</button>
-            <button id="btn-pause" class="control-btn" onclick="pauseTimer()">暫停</button>
-            <button id="btn-start" class="control-btn" onclick="startTimer()">開始測驗 (Go)</button>
-        </div>
-
-        <div id="ai-queue-section">
-            <div class="ai-queue-label">視覺辨識<br><span style="font-size:0.7rem;">等待確認</span></div>
-            <div id="ai-queue-container" style="display:flex; gap:10px;"></div>
-        </div>
-
-        <div id="camera-section">
-            <video id="viewfinder" autoplay playsinline muted></video>
-            <div id="virtual-finish-line"></div>
-            <div class="finish-line-label">🔴 虛擬終點線</div>
-            <canvas id="vision-canvas"></canvas>
-            <button id="btn-simulate-ai" onclick="simulateAICrossing()">強制觸發越線測試</button>
-        </div>
-
-        <div id="student-section">
-            <div id="student-grid"></div>
-        </div>
-
-        <div id="download-section">
-            <h2 style="color: white; margin-bottom: 5px;">🎉 測驗已結束</h2>
-            <button id="btn-dl-excel" class="download-btn" onclick="exportExcel()">📊 下載成績單 (.xlsx)</button>
+<!-- ===================== TEST SECTION ===================== -->
+<div id="test-section">
+    <!-- Timer + Controls -->
+    <div id="top-bar">
+        <div id="timer">00:00.00</div>
+        <div class="control-btns">
+            <button id="btn-fullscreen" class="ctrl-btn" onclick="toggleFullScreen()">全螢幕</button>
+            <button id="btn-reset" class="ctrl-btn" onclick="location.reload()">⬅ 設定</button>
+            <button id="btn-zero" class="ctrl-btn" onclick="zeroTimer()">歸零</button>
+            <button id="btn-finish" class="ctrl-btn" onclick="finishTest()">結束測驗</button>
+            <button id="btn-pause" class="ctrl-btn" onclick="pauseTimer()">暫停</button>
+            <button id="btn-start" class="ctrl-btn" onclick="startTimer()">🚀 開始 (Go)</button>
+            <button id="btn-edit-line" class="ctrl-btn" onclick="toggleLineEdit()">✏️ 調整終點線</button>
         </div>
     </div>
 
-    <script>
-        // ==========================================
-        // 系統全局變數
-        // ==========================================
-        let targetLaps = 8; 
-        let students = []; 
-        let aiQueue = []; 
-        let aiQueueCounter = 0; 
-        let isRunning = false;
-        let startTime, updatedTime, difference = 0, timeSaved = 0;
-        let timerAnimationId; 
-        
-        let visionProfiles = []; // 儲存號碼特徵
-        let mainCameraStream = null;
-        let visionAnimationId = null;
+    <!-- AI 待確認緩衝區 -->
+    <div id="ai-queue-bar">
+        <div class="queue-label">視覺辨識<br><span style="font-size:0.65rem;">待確認</span></div>
+        <div id="ai-queue-container" style="display:flex; gap:8px;"></div>
+    </div>
 
-        // 載入相機選單
-        window.addEventListener('load', async () => {
-            const cameraSelect = document.getElementById('sel-camera');
-            try {
-                const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                
-                videoDevices.forEach((device, index) => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || `攝影機 ${index + 1}`;
-                    cameraSelect.appendChild(option);
-                });
-                tempStream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                cameraSelect.innerHTML = '<option value="none">無相機權限</option>';
-            }
+    <!-- Camera -->
+    <div id="camera-section">
+        <video id="viewfinder" autoplay playsinline muted></video>
+        <canvas id="finish-line-canvas"></canvas>
+        <canvas id="vision-canvas"></canvas>
+        <div id="line-edit-overlay">
+            <div class="line-edit-hint">📍 點擊並拖曳畫出虛擬終點線</div>
+            <div class="line-edit-buttons">
+                <button id="btn-save-line" onclick="saveFinishLine()">✔️ 確認</button>
+                <button id="btn-reset-line" onclick="resetFinishLine()">↺ 重設</button>
+            </div>
+        </div>
+        <button id="btn-simulate" onclick="simulateAICrossing()">⚡ 模擬越線</button>
+    </div>
+
+    <!-- Student grid -->
+    <div id="student-section">
+        <div id="student-grid"></div>
+    </div>
+
+    <!-- Download overlay -->
+    <div id="download-section">
+        <h2>🎉 測驗結束</h2>
+        <button id="btn-dl-excel" class="dl-btn" onclick="exportExcel()">📊 下載成績單 (.xlsx)</button>
+        <button id="btn-close-download" class="dl-btn" onclick="document.getElementById('download-section').classList.remove('active')">繼續查看</button>
+    </div>
+</div>
+
+<!-- ===================== CORRECTION MODAL ===================== -->
+<div id="correction-modal">
+    <div class="correction-box">
+        <h3>✏️ 手動修正號碼</h3>
+        <div id="correction-detected-display" class="detected-num-display">--</div>
+        <p>系統辨識上方號碼，若有誤請於下方輸入正確號碼後確認：</p>
+        <input type="number" id="correction-input" placeholder="輸入正確號碼">
+        <div class="correction-btns">
+            <button id="btn-correction-confirm" onclick="confirmCorrection()">✔️ 確認修正</button>
+            <button id="btn-correction-cancel" onclick="cancelCorrection()">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ================================================================
+// 全局狀態
+// ================================================================
+let targetLaps = 8;
+let students = [];
+let aiQueue = [];
+let aiQueueCounter = 0;
+let isRunning = false;
+let startTime, difference = 0, timeSaved = 0;
+let timerAnimationId;
+
+let visionProfiles = []; // { number, bibColor, textColor }
+let mainCameraStream = null;
+let scannerStream = null;
+let visionAnimationId = null;
+
+// 虛擬終點線狀態 (比例座標 0~1)
+let finishLine = { x1: 0.5, y1: 0, x2: 0.5, y2: 1 }; // 預設正中央垂直線
+let lineEditMode = false;
+let lineDrawing = false;
+let lineDrawStart = null;
+let tempLine = null;
+
+// OCR 暫存
+let pendingOcrCapture = null; // { bibHex, textHex, rawNum }
+
+// 修正彈窗暫存
+let pendingCorrectionUid = null;
+
+// 越線偵測
+let lastLinePixels = null;
+let crossingCooldown = false;
+
+// ================================================================
+// 頁面載入
+// ================================================================
+window.addEventListener('load', async () => {
+    const sel = document.getElementById('sel-camera');
+    try {
+        const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        devices.filter(d => d.kind === 'videoinput').forEach((d, i) => {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.text = d.label || `攝影機 ${i+1}`;
+            sel.appendChild(opt);
         });
+        tmp.getTracks().forEach(t => t.stop());
+    } catch {
+        sel.innerHTML = '<option value="none">無相機權限</option>';
+    }
+});
 
-        // ==========================================
-        // 模組一：視覺特徵掃描 (設定頁面)
-        // ==========================================
-        let scannerStream = null;
+// ================================================================
+// 模組一：號碼衣視覺掃描 (設定頁面)
+// ================================================================
+function openScanner() {
+    document.getElementById('scanner-modal').classList.add('active');
+    document.getElementById('ocr-result-panel').classList.remove('active');
+    document.getElementById('manual-override-row').classList.remove('active');
+    pendingOcrCapture = null;
+    startScannerCamera();
+}
 
-        async function openScanner() {
-            const modal = document.getElementById('scanner-modal');
-            const video = document.getElementById('scanner-video');
-            modal.style.display = 'flex';
-            try {
-                scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = scannerStream;
-            } catch (err) {
-                alert("無法開啟相機！");
-                closeScanner();
-            }
-        }
+async function startScannerCamera() {
+    const video = document.getElementById('scanner-video');
+    try {
+        scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = scannerStream;
+    } catch {
+        alert('無法開啟相機！');
+        closeScanner();
+    }
+}
 
-        function closeScanner() {
-            if (scannerStream) scannerStream.getTracks().forEach(t => t.stop());
-            document.getElementById('scanner-modal').style.display = 'none';
-        }
+function closeScanner() {
+    if (scannerStream) scannerStream.getTracks().forEach(t => t.stop());
+    document.getElementById('scanner-modal').classList.remove('active');
+}
 
-        function captureAndAnalyze() {
-            const video = document.getElementById('scanner-video');
-            const canvas = document.getElementById('snapshot-canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+function captureAndAnalyze() {
+    const video = document.getElementById('scanner-video');
+    const canvas = document.getElementById('snapshot-canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-            const boxSize = 150;
-            const startX = (canvas.width - boxSize) / 2;
-            const startY = (canvas.height - boxSize) / 2;
-            const imgData = ctx.getImageData(startX, startY, boxSize, boxSize).data;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            let rSum = 0, gSum = 0, bSum = 0, count = 0;
-            let minBright = 255, darkColor = {r:0, g:0, b:0};
+    // 擷取中央框區域做顏色分析
+    const bw = 160, bh = 120;
+    const sx = (canvas.width - bw) / 2;
+    const sy = (canvas.height - bh) / 2;
+    const imgData = ctx.getImageData(sx, sy, bw, bh).data;
 
-            for(let i=0; i<imgData.length; i+=4) {
-                let r = imgData[i], g = imgData[i+1], b = imgData[i+2];
-                rSum += r; gSum += g; bSum += b; count++;
-                let brightness = (r*299 + g*587 + b*114)/1000;
-                if(brightness < minBright) { minBright = brightness; darkColor = {r,g,b}; }
-            }
-            
-            let avgColor = {r: Math.round(rSum/count), g: Math.round(gSum/count), b: Math.round(bSum/count)};
-            let bibHex = rgbToHex(avgColor.r, avgColor.g, avgColor.b);
-            let textHex = rgbToHex(darkColor.r, darkColor.g, darkColor.b);
+    let rSum = 0, gSum = 0, bSum = 0, cnt = 0;
+    let darkMin = 255, darkR = 0, darkG = 0, darkB = 0;
 
-            let detectedNum = prompt(`【特徵已分析】請輸入該號碼衣上的數字：`, "");
-            
-            if (detectedNum && detectedNum.trim() !== "") {
-                let num = detectedNum.trim();
-                visionProfiles.push({ number: num, bibColor: bibHex, textColor: textHex });
-                
-                let textArea = document.getElementById('manual-names');
-                textArea.value += (textArea.value ? '\n' : '') + `${num} 號學生`;
-                
-                const profileDisplay = document.getElementById('vision-profile-display');
-                profileDisplay.style.display = 'block';
-                profileDisplay.innerHTML = `🎯 已學習視覺線索：底色 <span style="background:${bibHex}; width:15px; height:15px; display:inline-block;"></span> 字色 <span style="background:${textHex}; width:15px; height:15px; display:inline-block;"></span> (共 ${visionProfiles.length} 筆)`;
-            }
-        }
+    for (let i = 0; i < imgData.length; i += 4) {
+        const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
+        rSum += r; gSum += g; bSum += b; cnt++;
+        const bright = (r*299 + g*587 + b*114) / 1000;
+        if (bright < darkMin) { darkMin = bright; darkR = r; darkG = g; darkB = b; }
+    }
+    const avgR = Math.round(rSum/cnt), avgG = Math.round(gSum/cnt), avgB = Math.round(bSum/cnt);
+    const bibHex = rgbToHex(avgR, avgG, avgB);
+    const textHex = rgbToHex(darkR, darkG, darkB);
 
-        function rgbToHex(r, g, b) {
-            return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
-        }
+    // 嘗試 OCR 數字辨識（利用對比度推斷）
+    // 實際環境可接 Tesseract.js；這裡先用顏色推斷 + 讓老師確認
+    const guessedNum = guessNumberFromImage(ctx, sx, sy, bw, bh);
 
-        // ==========================================
-        // 進入測驗畫面與名單解析
-        // ==========================================
-        async function startSetup() {
-            const dist = parseInt(document.getElementById('sel-distance').value);
-            const track = parseInt(document.getElementById('sel-track').value);
-            targetLaps = Math.ceil(dist / track); 
+    pendingOcrCapture = { bibHex, textHex, guessedNum };
 
-            let rawNames = document.getElementById('manual-names').value.trim().split('\n');
-            students = [];
-            
-            rawNames.forEach((line, index) => {
-                if(!line.trim()) return;
-                // 解析 "號碼 姓名" 格式 (例如 "15 王小明")
-                let match = line.trim().match(/^(\d+)?\s*(.*)$/);
-                let bibNumber = match[1] ? match[1] : "-";
-                let name = match[2] ? match[2] : `學生${index+1}`;
-                
-                students.push({
-                    id: index,
-                    bib: bibNumber,
-                    name: name,
-                    currentLap: 0, lapTimes: [], lapSplitTimes: [], 
-                    lastLapTimeMs: 0, lastLapTimeDifference: 0, timeoutId: null
-                });
-            });
+    // 顯示辨識結果面板
+    document.getElementById('ocr-detected-num').textContent = guessedNum || '??';
+    document.getElementById('bib-color-chip').style.background = bibHex;
+    document.getElementById('text-color-chip').style.background = textHex;
+    document.getElementById('ocr-result-panel').classList.add('active');
+    document.getElementById('manual-override-row').classList.remove('active');
+}
 
-            if (students.length === 0) { alert("請至少輸入一位學生！"); return; }
+// 簡單模擬 OCR 數字辨識（實際部署可換 Tesseract.js）
+function guessNumberFromImage(ctx, sx, sy, bw, bh) {
+    // 利用已有 visionProfiles 的顏色相似度來猜測
+    // 實際為：返回 null 讓老師輸入；這裡模擬返回隨機號
+    return null; // 返回 null = 不確定，讓老師輸入
+}
 
-            document.getElementById('setup-section').style.display = 'none';
-            document.getElementById('test-section').style.display = 'flex';
-            
-            renderGrid();
-            renderAIQueue();
-            
-            // 啟動主相機與越線偵測引擎
-            await startMainCamera();
-        }
+function confirmOcrResult() {
+    if (!pendingOcrCapture) return;
+    const num = document.getElementById('ocr-detected-num').textContent;
+    if (num === '??' || !num) {
+        showManualOcrInput();
+        return;
+    }
+    saveBibProfile(num, pendingOcrCapture.bibHex, pendingOcrCapture.textHex);
+    resetOcrPanel();
+}
 
-        // ==========================================
-        // 模組二：實時影像越線偵測 (Line Crossing Detection)
-        // ==========================================
-        async function startMainCamera() {
-            const selectedDeviceId = document.getElementById('sel-camera').value;
-            const viewfinder = document.getElementById('viewfinder');
-            
-            if (selectedDeviceId === 'none') return;
+function showManualOcrInput() {
+    document.getElementById('manual-override-row').classList.add('active');
+    document.getElementById('manual-bib-input').focus();
+}
 
-            try {
-                const constraints = { video: { deviceId: { exact: selectedDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } } };
-                mainCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-                viewfinder.srcObject = mainCameraStream;
-                
-                // 等待影片載入後啟動影像分析
-                viewfinder.onloadedmetadata = () => {
-                    viewfinder.play();
-                    startVisionLoop();
-                };
-            } catch (err) {
-                console.error("相機載入失敗", err);
-            }
-        }
+function saveManualBib() {
+    const input = document.getElementById('manual-bib-input');
+    const num = input.value.trim();
+    if (!num) { alert('請輸入號碼！'); return; }
+    if (!pendingOcrCapture) return;
+    saveBibProfile(num, pendingOcrCapture.bibHex, pendingOcrCapture.textHex);
+    input.value = '';
+    resetOcrPanel();
+}
 
-        let lastLineData = null;
-        let crossingCooldown = false;
+function saveBibProfile(num, bibHex, textHex) {
+    // 同號碼只更新（不重複）
+    const existIdx = visionProfiles.findIndex(p => p.number === num);
+    if (existIdx > -1) {
+        visionProfiles[existIdx] = { number: num, bibColor: bibHex, textColor: textHex };
+    } else {
+        visionProfiles.push({ number: num, bibColor: bibHex, textColor: textHex });
+        // 自動加入名單
+        const ta = document.getElementById('manual-names');
+        const lines = ta.value ? ta.value.split('\n') : [];
+        const exists = lines.some(l => l.trim().startsWith(num + ' ') || l.trim() === num);
+        if (!exists) ta.value = (ta.value ? ta.value + '\n' : '') + `${num} 學生${num}號`;
+    }
+    renderProfileList();
+}
 
-        function startVisionLoop() {
-            const video = document.getElementById('viewfinder');
-            const canvas = document.getElementById('vision-canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            
-            function processFrame() {
-                if (!isRunning || video.paused || video.ended) {
-                    visionAnimationId = requestAnimationFrame(processFrame);
-                    return;
-                }
+function resetOcrPanel() {
+    document.getElementById('ocr-result-panel').classList.remove('active');
+    document.getElementById('manual-override-row').classList.remove('active');
+    pendingOcrCapture = null;
+}
 
-                // 設定隱藏 Canvas 大小與影片一致
-                if(canvas.width !== video.videoWidth) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                }
+function renderProfileList() {
+    const container = document.getElementById('profile-list');
+    container.innerHTML = '';
+    visionProfiles.forEach(p => {
+        const badge = document.createElement('div');
+        badge.className = 'profile-badge';
+        badge.innerHTML = `
+            <span class="badge-num">#${p.number}</span>
+            <span class="badge-colors">
+                <span style="background:${p.bibColor}" title="底色"></span>
+                <span style="background:${p.textColor}" title="字色"></span>
+            </span>
+        `;
+        container.appendChild(badge);
+    });
+}
 
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // 擷取畫面正中央的一條垂直線像素 (x = width/2)
-                const centerX = Math.floor(canvas.width / 2);
-                const lineData = ctx.getImageData(centerX, 0, 1, canvas.height).data;
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
 
-                // 比對前一個 frame，計算像素動態差異 (Motion Detection on Line)
-                if (lastLineData) {
-                    let diffTotal = 0;
-                    for(let i=0; i<lineData.length; i+=4) {
-                        diffTotal += Math.abs(lineData[i] - lastLineData[i]);
-                        diffTotal += Math.abs(lineData[i+1] - lastLineData[i+1]);
-                        diffTotal += Math.abs(lineData[i+2] - lastLineData[i+2]);
-                    }
-                    let avgDiff = diffTotal / (lineData.length / 4);
-                    
-                    // 當線上像素產生劇烈變化 (有人穿過終點線)
-                    if (avgDiff > 45 && !crossingCooldown) {
-                        handleLineCrossing();
-                    }
-                }
+// ================================================================
+// 進入測驗
+// ================================================================
+async function startSetup() {
+    const dist = parseInt(document.getElementById('sel-distance').value);
+    const track = parseInt(document.getElementById('sel-track').value);
+    targetLaps = Math.ceil(dist / track);
 
-                lastLineData = new Uint8ClampedArray(lineData);
-                visionAnimationId = requestAnimationFrame(processFrame);
-            }
+    const rawNames = document.getElementById('manual-names').value.trim().split('\n');
+    students = [];
+    rawNames.forEach((line, i) => {
+        if (!line.trim()) return;
+        const match = line.trim().match(/^(\d+)?\s*(.*)$/);
+        const bib = match[1] || '-';
+        const name = match[2] || `學生${i+1}`;
+        students.push({
+            id: students.length, bib, name,
+            currentLap: 0, lapTimes: [], lapSplitTimes: [],
+            lastLapTimeMs: 0, lastLapTimeDifference: 0, timeoutId: null
+        });
+    });
+
+    if (!students.length) { alert('請至少輸入一位學生！'); return; }
+
+    document.getElementById('setup-section').style.display = 'none';
+    document.getElementById('test-section').style.display = 'flex';
+
+    renderGrid();
+    renderAIQueue();
+    await startMainCamera();
+}
+
+// ================================================================
+// 模組二：主相機 + 虛擬終點線繪製
+// ================================================================
+async function startMainCamera() {
+    const deviceId = document.getElementById('sel-camera').value;
+    const video = document.getElementById('viewfinder');
+    if (deviceId === 'none') return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        mainCameraStream = stream;
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+            video.play();
+            setupFinishLineCanvas();
+            startVisionLoop();
+        };
+    } catch (err) { console.error('相機載入失敗', err); }
+}
+
+function setupFinishLineCanvas() {
+    const cam = document.getElementById('camera-section');
+    const flCanvas = document.getElementById('finish-line-canvas');
+    flCanvas.width = cam.offsetWidth;
+    flCanvas.height = cam.offsetHeight;
+    drawFinishLine();
+    setupLineDrawing();
+}
+
+function drawFinishLine(draft) {
+    const flCanvas = document.getElementById('finish-line-canvas');
+    const ctx = flCanvas.getContext('2d');
+    const w = flCanvas.width, h = flCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const line = draft || finishLine;
+    const x1 = line.x1 * w, y1 = line.y1 * h;
+    const x2 = line.x2 * w, y2 = line.y2 * h;
+
+    ctx.save();
+    if (lineEditMode) {
+        ctx.strokeStyle = '#5c35ff';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+    } else {
+        ctx.strokeStyle = 'rgba(255,30,30,0.8)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+        ctx.shadowColor = '#ff1744';
+        ctx.shadowBlur = 8;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+
+    // 標籤
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 8;
+    ctx.save();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = lineEditMode ? '#5c35ff' : 'rgba(255,30,30,0.9)';
+    ctx.fillText('⬛ 虛擬終點線', mx - 40, my);
+    ctx.restore();
+}
+
+function setupLineDrawing() {
+    const flCanvas = document.getElementById('finish-line-canvas');
+    flCanvas.addEventListener('mousedown', onLineMouseDown);
+    flCanvas.addEventListener('mousemove', onLineMouseMove);
+    flCanvas.addEventListener('mouseup', onLineMouseUp);
+    flCanvas.addEventListener('touchstart', onLineTouchStart, { passive: false });
+    flCanvas.addEventListener('touchmove', onLineTouchMove, { passive: false });
+    flCanvas.addEventListener('touchend', onLineTouchEnd);
+}
+
+function getCanvasPos(e, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return {
+        x: (src.clientX - rect.left) / rect.width,
+        y: (src.clientY - rect.top) / rect.height
+    };
+}
+
+function onLineMouseDown(e) {
+    if (!lineEditMode) return;
+    lineDrawing = true;
+    lineDrawStart = getCanvasPos(e, e.currentTarget);
+}
+function onLineMouseMove(e) {
+    if (!lineEditMode || !lineDrawing) return;
+    const pos = getCanvasPos(e, e.currentTarget);
+    drawFinishLine({ x1: lineDrawStart.x, y1: lineDrawStart.y, x2: pos.x, y2: pos.y });
+    tempLine = { x1: lineDrawStart.x, y1: lineDrawStart.y, x2: pos.x, y2: pos.y };
+}
+function onLineMouseUp(e) {
+    if (!lineEditMode || !lineDrawing) return;
+    lineDrawing = false;
+    if (tempLine) { finishLine = { ...tempLine }; tempLine = null; }
+    drawFinishLine();
+}
+function onLineTouchStart(e) { e.preventDefault(); onLineMouseDown(e); }
+function onLineTouchMove(e) { e.preventDefault(); onLineMouseMove(e); }
+function onLineTouchEnd(e) { onLineMouseUp(e); }
+
+function toggleLineEdit() {
+    lineEditMode = !lineEditMode;
+    const overlay = document.getElementById('line-edit-overlay');
+    const flCanvas = document.getElementById('finish-line-canvas');
+    const btn = document.getElementById('btn-edit-line');
+    if (lineEditMode) {
+        overlay.classList.add('active');
+        flCanvas.classList.add('editable');
+        btn.style.background = '#ff6b35';
+    } else {
+        overlay.classList.remove('active');
+        flCanvas.classList.remove('editable');
+        btn.style.background = '#5c35ff';
+    }
+    drawFinishLine();
+}
+
+function saveFinishLine() {
+    if (tempLine) { finishLine = { ...tempLine }; tempLine = null; }
+    lineEditMode = false;
+    document.getElementById('line-edit-overlay').classList.remove('active');
+    document.getElementById('finish-line-canvas').classList.remove('editable');
+    document.getElementById('btn-edit-line').style.background = '#5c35ff';
+    drawFinishLine();
+}
+
+function resetFinishLine() {
+    finishLine = { x1: 0.5, y1: 0, x2: 0.5, y2: 1 };
+    tempLine = null;
+    drawFinishLine();
+}
+
+// ================================================================
+// 模組三：實時越線偵測
+// ================================================================
+function startVisionLoop() {
+    const video = document.getElementById('viewfinder');
+    const canvas = document.getElementById('vision-canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    function processFrame() {
+        if (!isRunning || video.paused || video.ended) {
             visionAnimationId = requestAnimationFrame(processFrame);
+            return;
         }
 
-        function handleLineCrossing() {
-            // 1. 視覺回饋：終點線閃爍綠光
-            const lineEl = document.getElementById('virtual-finish-line');
-            lineEl.classList.add('flash');
-            setTimeout(() => lineEl.classList.remove('flash'), 300);
-
-            // 2. 觸發 CD 避免同一個人觸發多次
-            crossingCooldown = true;
-            setTimeout(() => crossingCooldown = false, 1500);
-
-            // 3. 呼叫 OCR 模擬系統，將捕捉到的人丟進待確認區
-            simulateAICrossing();
+        if (canvas.width !== video.videoWidth) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
         }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // ==========================================
-        // 模組三：OCR 號碼辨識模擬與人機協作
-        // ==========================================
-        function simulateAICrossing() {
-            if (!isRunning) return;
-            
-            // 模擬電腦視覺 OCR：從還在跑的學生中抓取號碼
-            let activeStudents = students.filter(s => s.currentLap < targetLaps);
-            if (activeStudents.length === 0) return;
-            
-            // 隨機模擬 OCR 讀取到某個學生的號碼
-            let detectedStudent = activeStudents[Math.floor(Math.random() * activeStudents.length)];
+        // 沿終點線取樣像素
+        const linePixels = sampleLinePixels(ctx, canvas.width, canvas.height);
 
-            // 擷取最精確的「撞線時間戳」
-            let exactTimestampDifference = difference;
+        if (lastLinePixels && linePixels.length === lastLinePixels.length) {
+            let diff = 0;
+            for (let i = 0; i < linePixels.length; i += 4) {
+                diff += Math.abs(linePixels[i] - lastLinePixels[i]);
+                diff += Math.abs(linePixels[i+1] - lastLinePixels[i+1]);
+                diff += Math.abs(linePixels[i+2] - lastLinePixels[i+2]);
+            }
+            const avgDiff = diff / (linePixels.length / 4);
 
-            // 加入待確認區
-            let queueItem = {
-                uid: aiQueueCounter++,
-                studentId: detectedStudent.id,
-                bib: detectedStudent.bib,
-                name: detectedStudent.name,
-                timestampDiff: exactTimestampDifference,
-                timeStr: formatTime(exactTimestampDifference)
-            };
-
-            aiQueue.push(queueItem);
-            renderAIQueue();
-        }
-
-        function renderAIQueue() {
-            const container = document.getElementById('ai-queue-container');
-            container.innerHTML = '';
-            if (aiQueue.length === 0) { container.innerHTML = '<span style="color:#aaa; font-size:0.9rem;">目前無撞線動態</span>'; return; }
-
-            aiQueue.forEach(item => {
-                let card = document.createElement('div');
-                card.className = 'ai-card';
-                card.innerHTML = `
-                    <div class="stu-number">${item.bib}</div>
-                    <div class="stu-info">${item.name}<span class="ai-time">⏱ ${item.timeStr}</span></div>
-                    <button class="ai-btn-ok" onclick="confirmAI(${item.uid})">✔️</button>
-                    <button class="ai-btn-no" onclick="discardAI(${item.uid})">❌</button>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        function confirmAI(uid) {
-            let itemIndex = aiQueue.findIndex(q => q.uid === uid);
-            if (itemIndex > -1) {
-                // 以捕捉到的「撞線時間」寫入成績
-                recordLap(aiQueue[itemIndex].studentId, aiQueue[itemIndex].timestampDiff);
-                aiQueue.splice(itemIndex, 1);
-                renderAIQueue();
+            if (avgDiff > 45 && !crossingCooldown) {
+                handleLineCrossing();
             }
         }
+        lastLinePixels = new Uint8ClampedArray(linePixels);
+        visionAnimationId = requestAnimationFrame(processFrame);
+    }
+    visionAnimationId = requestAnimationFrame(processFrame);
+}
 
-        function discardAI(uid) {
-            let itemIndex = aiQueue.findIndex(q => q.uid === uid);
-            if (itemIndex > -1) { aiQueue.splice(itemIndex, 1); renderAIQueue(); }
+function sampleLinePixels(ctx, w, h) {
+    // 沿終點線取 N 個點
+    const N = 20;
+    const pixels = [];
+    for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const x = Math.floor((finishLine.x1 + (finishLine.x2 - finishLine.x1) * t) * w);
+        const y = Math.floor((finishLine.y1 + (finishLine.y2 - finishLine.y1) * t) * h);
+        const px = Math.max(0, Math.min(w-1, x));
+        const py = Math.max(0, Math.min(h-1, y));
+        try {
+            const d = ctx.getImageData(px, py, 1, 1).data;
+            pixels.push(d[0], d[1], d[2], d[3]);
+        } catch { pixels.push(0, 0, 0, 255); }
+    }
+    return pixels;
+}
+
+function handleLineCrossing() {
+    // 閃光效果
+    const flCanvas = document.getElementById('finish-line-canvas');
+    const ctx = flCanvas.getContext('2d');
+    const w = flCanvas.width, h = flCanvas.height;
+    const x1 = finishLine.x1 * w, y1 = finishLine.y1 * h;
+    const x2 = finishLine.x2 * w, y2 = finishLine.y2 * h;
+    ctx.save();
+    ctx.strokeStyle = '#00FF00';
+    ctx.lineWidth = 6;
+    ctx.shadowColor = '#00FF00';
+    ctx.shadowBlur = 20;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.restore();
+    setTimeout(() => drawFinishLine(), 300);
+
+    crossingCooldown = true;
+    setTimeout(() => crossingCooldown = false, 1500);
+
+    simulateAICrossing();
+}
+
+// ================================================================
+// 模組四：AI 辨識 + 人機協作
+// ================================================================
+function simulateAICrossing() {
+    if (!isRunning) return;
+    const active = students.filter(s => s.currentLap < targetLaps);
+    if (!active.length) return;
+
+    // 嘗試用顏色特徵匹配（有 profile 時）
+    let detectedStudent = null;
+    let detectedBib = null;
+    let confidence = 0;
+
+    if (visionProfiles.length > 0) {
+        // 模擬：隨機從有 profile 的學生中選
+        const profiledStudents = active.filter(s => visionProfiles.find(p => p.number === s.bib));
+        if (profiledStudents.length > 0) {
+            detectedStudent = profiledStudents[Math.floor(Math.random() * profiledStudents.length)];
+            detectedBib = detectedStudent.bib;
+            confidence = 80 + Math.floor(Math.random() * 15);
         }
+    }
 
-        // ==========================================
-        // 核心計時與動態排位網格
-        // ==========================================
-        function renderGrid() {
-            const grid = document.getElementById('student-grid');
-            grid.innerHTML = ''; 
-            
-            let sorted = students.map((s, idx) => ({ ...s, originalIndex: idx }));
-            sorted.sort((a, b) => {
-                if (a.currentLap !== b.currentLap) return b.currentLap - a.currentLap; 
-                if (a.currentLap === 0) return a.id - b.id; 
-                return a.lastLapTimeDifference - b.lastLapTimeDifference;
-            });
+    if (!detectedStudent) {
+        detectedStudent = active[Math.floor(Math.random() * active.length)];
+        detectedBib = detectedStudent.bib;
+        confidence = 40 + Math.floor(Math.random() * 30);
+    }
 
-            sorted.forEach((student, position) => {
-                let btn = document.createElement('button');
-                btn.id = `student-btn-${student.originalIndex}`;
-                btn.className = 'student-btn';
-                btn.style.order = position; 
-                
-                let bibDisplay = student.bib !== "-" ? `<div class="bib-badge">#${student.bib}</div>` : '';
+    const exactTs = difference;
+    const item = {
+        uid: aiQueueCounter++,
+        studentId: detectedStudent.id,
+        bib: detectedBib,
+        name: detectedStudent.name,
+        timestampDiff: exactTs,
+        timeStr: formatTime(exactTs),
+        confidence
+    };
+    aiQueue.push(item);
+    renderAIQueue();
+}
 
-                if (student.currentLap >= targetLaps) {
-                    btn.innerHTML = `${bibDisplay}${student.name} <br><span>完賽: ${student.lapTimes[student.lapTimes.length - 1]}</span>`;
-                    btn.classList.add('finished');
-                } else {
-                    btn.innerHTML = `${bibDisplay}${student.name} <br><span>(${student.currentLap}/${targetLaps})</span>`;
-                    if (student.currentLap === targetLaps - 1) btn.classList.add('last-lap');
-                }
-                
-                // 老師手動補漏點擊，採用當下時間
-                btn.onclick = () => recordLap(student.originalIndex, null);
-                grid.appendChild(btn);
-            });
+function renderAIQueue() {
+    const c = document.getElementById('ai-queue-container');
+    c.innerHTML = '';
+    if (!aiQueue.length) {
+        c.innerHTML = '<span style="color:var(--muted); font-size:0.85rem;">目前無撞線動態</span>';
+        return;
+    }
+    aiQueue.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'ai-card';
+        const confColor = item.confidence >= 70 ? 'var(--green)' : item.confidence >= 50 ? 'var(--yellow)' : 'var(--red)';
+        card.innerHTML = `
+            <div class="bib-tag">${item.bib}</div>
+            <div>
+                <div class="ai-name">${item.name}</div>
+                <div class="ai-time">⏱ ${item.timeStr} &nbsp;<span style="color:${confColor}">●${item.confidence}%</span></div>
+            </div>
+            <button class="ai-ok" onclick="confirmAI(${item.uid})">✔</button>
+            <button class="ai-edit" onclick="openCorrection(${item.uid})">✏️</button>
+            <button class="ai-no" onclick="discardAI(${item.uid})">✕</button>
+        `;
+        c.appendChild(card);
+    });
+}
+
+function confirmAI(uid) {
+    const idx = aiQueue.findIndex(q => q.uid === uid);
+    if (idx > -1) {
+        recordLap(aiQueue[idx].studentId, aiQueue[idx].timestampDiff);
+        aiQueue.splice(idx, 1);
+        renderAIQueue();
+    }
+}
+
+function discardAI(uid) {
+    const idx = aiQueue.findIndex(q => q.uid === uid);
+    if (idx > -1) { aiQueue.splice(idx, 1); renderAIQueue(); }
+}
+
+// 開啟手動修正彈窗
+function openCorrection(uid) {
+    const item = aiQueue.find(q => q.uid === uid);
+    if (!item) return;
+    pendingCorrectionUid = uid;
+    document.getElementById('correction-detected-display').textContent = item.bib;
+    document.getElementById('correction-input').value = '';
+    document.getElementById('correction-modal').classList.add('active');
+    document.getElementById('correction-input').focus();
+}
+
+function confirmCorrection() {
+    const newBib = document.getElementById('correction-input').value.trim();
+    if (!newBib) { alert('請輸入正確號碼！'); return; }
+
+    const idx = aiQueue.findIndex(q => q.uid === pendingCorrectionUid);
+    if (idx > -1) {
+        // 找到對應學生
+        const student = students.find(s => s.bib === newBib);
+        if (student) {
+            aiQueue[idx].studentId = student.id;
+            aiQueue[idx].bib = newBib;
+            aiQueue[idx].name = student.name;
+        } else {
+            // 號碼不在名單：直接更新顯示，但不能記錄
+            aiQueue[idx].bib = newBib;
+            aiQueue[idx].name = `#${newBib} (未知)`;
         }
+        renderAIQueue();
+    }
+    cancelCorrection();
+}
 
-        function recordLap(index, customTimestampDifference = null) {
-            if (!isRunning) return;
-            let student = students[index];
-            if (student.currentLap >= targetLaps) return; 
-            
-            let lapDifference = customTimestampDifference !== null ? customTimestampDifference : difference;
-            let now = Date.now();
-            
-            if (student.lastLapTimeMs > 0 && (now - student.lastLapTimeMs) < 5000) {
-                if(!confirm(`【防誤觸】確定紀錄？`)) return;
-            }
+function cancelCorrection() {
+    pendingCorrectionUid = null;
+    document.getElementById('correction-modal').classList.remove('active');
+}
 
-            student.currentLap++;
-            let splitTimeMs = lapDifference - student.lastLapTimeDifference;
-            let splitTimeStr = formatTime(splitTimeMs);
-            
-            student.lapTimes.push(formatTime(lapDifference)); 
-            student.lapSplitTimes.push(splitTimeStr); 
-            student.lastLapTimeMs = now;
-            student.lastLapTimeDifference = lapDifference;
-            
-            renderGrid(); 
+// ================================================================
+// 計時器
+// ================================================================
+function updateTimer() {
+    if (!isRunning) return;
+    difference = Date.now() - startTime + timeSaved;
+    document.getElementById('timer').textContent = formatTime(difference);
+    timerAnimationId = requestAnimationFrame(updateTimer);
+}
 
-            let btnElement = document.getElementById(`student-btn-${index}`);
-            if(btnElement) {
-                let bibDisplay = student.bib !== "-" ? `<div class="bib-badge">#${student.bib}</div>` : '';
-                btnElement.innerHTML = `${bibDisplay}${student.name} <br><span style="color:#FFD700; font-weight:bold;">圈: ${splitTimeStr}</span>`;
-                if (student.timeoutId) clearTimeout(student.timeoutId);
-                student.timeoutId = setTimeout(() => {
-                    renderGrid(); // 時間到後重置顯示狀態
-                }, 2500);
-            }
+function startTimer() {
+    if (!isRunning) {
+        startTime = Date.now();
+        isRunning = true;
+        timerAnimationId = requestAnimationFrame(updateTimer);
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('btn-pause').style.display = 'inline-block';
+        document.getElementById('btn-zero').style.display = 'inline-block';
+        document.getElementById('btn-finish').style.display = 'inline-block';
+    }
+}
+
+function pauseTimer() {
+    if (isRunning) {
+        isRunning = false;
+        cancelAnimationFrame(timerAnimationId);
+        timeSaved = difference;
+        document.getElementById('btn-pause').textContent = '繼續';
+    } else {
+        startTime = Date.now();
+        isRunning = true;
+        timerAnimationId = requestAnimationFrame(updateTimer);
+        document.getElementById('btn-pause').textContent = '暫停';
+    }
+}
+
+function zeroTimer() {
+    if (!confirm('確定歸零並清除所有紀錄？')) return;
+    isRunning = false; cancelAnimationFrame(timerAnimationId);
+    startTime = Date.now(); timeSaved = 0; difference = 0;
+    document.getElementById('timer').textContent = '00:00.00';
+    aiQueue = []; renderAIQueue();
+    students.forEach(s => { s.currentLap = 0; s.lapTimes = []; s.lapSplitTimes = []; s.lastLapTimeMs = 0; s.lastLapTimeDifference = 0; });
+    document.getElementById('btn-start').style.display = 'inline-block';
+    document.getElementById('btn-pause').style.display = 'none';
+    document.getElementById('btn-finish').style.display = 'none';
+    renderGrid();
+}
+
+function finishTest() {
+    isRunning = false; cancelAnimationFrame(timerAnimationId);
+    document.getElementById('btn-pause').style.display = 'none';
+    document.getElementById('download-section').classList.add('active');
+}
+
+// ================================================================
+// 記錄圈數
+// ================================================================
+function renderGrid() {
+    const grid = document.getElementById('student-grid');
+    grid.innerHTML = '';
+    const sorted = students.map((s, i) => ({ ...s, origIdx: i }));
+    sorted.sort((a, b) => {
+        if (a.currentLap !== b.currentLap) return b.currentLap - a.currentLap;
+        if (a.currentLap === 0) return parseInt(a.bib) - parseInt(b.bib);
+        return a.lastLapTimeDifference - b.lastLapTimeDifference;
+    });
+
+    sorted.forEach((student, pos) => {
+        const btn = document.createElement('button');
+        btn.id = `sbtn-${student.origIdx}`;
+        btn.className = 'student-btn' + (student.currentLap === 0 ? '' : student.currentLap >= targetLaps ? ' finished' : student.currentLap === targetLaps - 1 ? ' last-lap' : ' running');
+        btn.style.order = pos;
+        const bibHtml = student.bib !== '-' ? `<div class="bib-badge">#${student.bib}</div>` : '';
+        if (student.currentLap >= targetLaps) {
+            btn.innerHTML = `${bibHtml}<b>${student.name}</b><span>✅ ${student.lapTimes.at(-1)}</span>`;
+        } else {
+            btn.innerHTML = `${bibHtml}<b>${student.name}</b><span>${student.currentLap}/${targetLaps}</span>`;
         }
+        btn.onclick = () => recordLap(student.origIdx, null);
+        grid.appendChild(btn);
+    });
+}
 
-        function formatTime(ms) {
-            let minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-            let seconds = Math.floor((ms % (1000 * 60)) / 1000);
-            let milliseconds = Math.floor((ms % 1000) / 10);
-            return (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds + "." + (milliseconds < 10 ? "0" : "") + milliseconds;
-        }
+function recordLap(index, customTs = null) {
+    if (!isRunning) return;
+    const s = students[index];
+    if (s.currentLap >= targetLaps) return;
+    const lapDiff = customTs !== null ? customTs : difference;
+    const now = Date.now();
+    if (s.lastLapTimeMs > 0 && (now - s.lastLapTimeMs) < 5000) {
+        if (!confirm('【防誤觸】確定紀錄此圈？')) return;
+    }
+    s.currentLap++;
+    const split = lapDiff - s.lastLapTimeDifference;
+    s.lapTimes.push(formatTime(lapDiff));
+    s.lapSplitTimes.push(formatTime(split));
+    s.lastLapTimeMs = now;
+    s.lastLapTimeDifference = lapDiff;
+    renderGrid();
 
-        function updateTimer() {
-            if (!isRunning) return;
-            difference = Date.now() - startTime + timeSaved;
-            document.getElementById('timer').innerText = formatTime(difference);
-            timerAnimationId = requestAnimationFrame(updateTimer);
-        }
+    const btn = document.getElementById(`sbtn-${index}`);
+    if (btn) {
+        btn.classList.add('just-crossed');
+        const bibHtml = s.bib !== '-' ? `<div class="bib-badge">#${s.bib}</div>` : '';
+        btn.innerHTML = `${bibHtml}<b>${s.name}</b><span style="color:var(--green); font-weight:700;">圈: ${formatTime(split)}</span>`;
+        if (s.timeoutId) clearTimeout(s.timeoutId);
+        s.timeoutId = setTimeout(() => renderGrid(), 2500);
+    }
+}
 
-        function startTimer() {
-            if (!isRunning) {
-                startTime = Date.now(); isRunning = true;
-                timerAnimationId = requestAnimationFrame(updateTimer); 
-                document.getElementById('btn-start').style.display = "none";
-                document.getElementById('btn-pause').style.display = "inline-block";
-                document.getElementById('btn-zero').style.display = "inline-block";
-                document.getElementById('btn-pause').innerText = "暫停";
-                renderAIQueue();
-            }
-        }
+// ================================================================
+// 匯出 Excel
+// ================================================================
+function exportExcel() {
+    const data = students.map(s => {
+        const row = { 號碼: s.bib, 姓名: s.name, 完成圈數: `${s.currentLap}/${targetLaps}`, 總成績: s.currentLap === targetLaps ? s.lapTimes.at(-1) : '未完賽' };
+        for (let i = 0; i < targetLaps; i++) row[`第${i+1}圈`] = s.lapSplitTimes[i] || '-';
+        return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '測驗成績');
+    XLSX.writeFile(wb, `LapTime_${Date.now()}.xlsx`);
+    document.getElementById('download-section').classList.remove('active');
+}
 
-        function pauseTimer() {
-            if (isRunning) {
-                isRunning = false; cancelAnimationFrame(timerAnimationId); 
-                timeSaved = difference;
-                document.getElementById('btn-pause').innerText = "繼續";
-            } else { startTimer(); }
-        }
+// ================================================================
+// 工具函式
+// ================================================================
+function formatTime(ms) {
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const cs = Math.floor((ms % 1000) / 10);
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
 
-        function zeroTimer() {
-            if (confirm("確定要將時間歸零，並清除所有學生的紀錄嗎？")) {
-                isRunning = false; cancelAnimationFrame(timerAnimationId);
-                startTime = Date.now(); timeSaved = 0; difference = 0;
-                document.getElementById('timer').innerText = "00:00.00";
-                aiQueue = []; renderAIQueue();
-                students.forEach(s => {
-                    s.currentLap = 0; s.lapTimes = []; s.lapSplitTimes = []; 
-                    s.lastLapTimeMs = 0; s.lastLapTimeDifference = 0;
-                });
-                renderGrid(); 
-                document.getElementById('btn-start').style.display = "inline-block";
-                document.getElementById('btn-pause').style.display = "none";
-            }
-        }
+function toggleFullScreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+}
 
-        function finishTest() {
-            isRunning = false; cancelAnimationFrame(timerAnimationId);
-            document.getElementById('btn-pause').style.display = "none";
-            
-            document.getElementById('download-section').style.display = "flex";
-        }
-        
-        function exportExcel() {
-            let exportData = students.map(s => {
-                let row = { 
-                    "號碼": s.bib,
-                    "姓名": s.name, 
-                    "完成圈數": `${s.currentLap} / ${targetLaps}`,
-                    "總成績": s.currentLap === targetLaps ? s.lapTimes[s.lapTimes.length - 1] : "未完賽",
-                    "最終累計時間": s.lapTimes.length > 0 ? s.lapTimes[s.lapTimes.length - 1] : "無紀錄"
-                };
-                for (let i = 0; i < targetLaps; i++) row[`第${i+1}圈`] = s.lapSplitTimes[i] || "-";
-                return row;
-            });
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "測驗成績");
-            XLSX.writeFile(wb, `視覺測驗成績_${new Date().getTime()}.xlsx`);
-            document.getElementById('download-section').style.display = 'none';
-        }
-
-        function resetTimer() { location.reload(); }
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } 
-            else if (document.exitFullscreen) { document.exitFullscreen(); }
-        }
-    </script>
+// 鍵盤快捷鍵
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        cancelCorrection();
+        if (lineEditMode) saveFinishLine();
+    }
+    if (e.key === 'Enter' && document.getElementById('correction-modal').classList.contains('active')) {
+        confirmCorrection();
+    }
+});
+</script>
 </body>
 </html>
