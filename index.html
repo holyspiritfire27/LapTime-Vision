@@ -1,1765 +1,1401 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LapTime-Vision 視覺計時系統</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>LapTime-Vision v3</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+:root{
+  --bg:#0a0e1a;--panel:#121929;--border:#1e2d4a;
+  --accent:#00d4ff;--accent2:#ff6b35;
+  --green:#00e676;--red:#ff1744;--yellow:#ffea00;
+  --text:#e8f4fc;--muted:#7a9ab5;--card:#162035;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);
+  height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
-        :root {
-            --bg: #0a0e1a;
-            --panel: #121929;
-            --border: #1e2d4a;
-            --accent: #00d4ff;
-            --accent2: #ff6b35;
-            --green: #00e676;
-            --red: #ff1744;
-            --yellow: #ffea00;
-            --text: #e8f4fc;
-            --muted: #7a9ab5;
-            --card: #162035;
-        }
+/* ── SETUP ── */
+#setup-section{padding:16px;flex-grow:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.setup-header{text-align:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.setup-header h1{font-family:'Rajdhani',sans-serif;font-size:1.8rem;color:var(--accent);letter-spacing:2px}
+.setup-header p{color:var(--muted);font-size:0.82rem;margin-top:3px}
+.setup-group{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
+.setup-group .gtitle{font-size:0.75rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+select,input[type=text],input[type=number],textarea{
+  width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:0.93rem;font-family:'Noto Sans TC',sans-serif;margin-top:5px}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+textarea{resize:vertical}
+.btn-primary{width:100%;padding:13px;background:linear-gradient(135deg,var(--accent),#0099bb);
+  border:none;border-radius:8px;color:#000;font-size:1.05rem;font-weight:700;cursor:pointer;letter-spacing:1px;margin-top:5px}
+.btn-sec{width:100%;padding:9px;background:var(--card);border:1px solid var(--accent2);
+  border-radius:8px;color:var(--accent2);font-size:0.9rem;font-weight:700;cursor:pointer;margin-top:5px}
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
+/* ── CAMERA PREVIEW in setup ── */
+#cam-preview-wrap{margin-top:8px;position:relative;border-radius:8px;overflow:hidden;
+  background:#000;display:none;border:2px solid var(--border)}
+#cam-preview-video{width:100%;display:block;max-height:180px;object-fit:cover}
+#cam-preview-info{position:absolute;bottom:0;left:0;right:0;
+  background:rgba(0,0,0,0.65);padding:3px 8px;font-size:0.68rem;color:var(--muted);
+  display:flex;justify-content:space-between}
 
-        /* ===== SETUP SECTION ===== */
-        #setup-section {
-            padding: 20px;
-            flex-grow: 1;
-            overflow-y: auto;
-            background: var(--bg);
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
+/* ── SCANNER MODAL ── */
+#scanner-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);
+  z-index:1000;flex-direction:column;align-items:center;padding:14px;overflow-y:auto;gap:10px}
+#scanner-modal.active{display:flex}
+.scan-title{font-family:'Rajdhani',sans-serif;font-size:1.4rem;color:var(--accent);letter-spacing:2px}
 
-        .setup-header {
-            text-align: center;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .setup-header h1 {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.8rem;
-            color: var(--accent);
-            letter-spacing: 2px;
-        }
-        .setup-header p { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+/* camera box */
+#scan-cam-box{position:relative;width:100%;max-width:420px;border-radius:10px;
+  overflow:hidden;border:2px solid var(--accent);background:#000;flex-shrink:0}
+#scan-video{width:100%;display:block;object-fit:cover;min-height:240px}
 
-        .setup-group {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
-        }
-        .setup-group .group-title {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: var(--accent);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 12px;
-        }
+/* ROI overlay */
+#roi-overlay{position:absolute;pointer-events:none;inset:0}
+/* darkening outside roi drawn by JS */
+#roi-canvas{position:absolute;inset:0;pointer-events:none}
 
-        select, input[type="text"], input[type="number"], textarea {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text);
-            font-size: 0.95rem;
-            font-family: 'Noto Sans TC', sans-serif;
-            margin-top: 6px;
-        }
-        select:focus, input:focus, textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-        textarea { resize: vertical; }
+/* tap-to-focus ring */
+#focus-ring{display:none;position:absolute;width:56px;height:56px;
+  border:2px solid var(--yellow);border-radius:50%;pointer-events:none;
+  transform:translate(-50%,-50%);z-index:5;
+  animation:focusPulse 0.5s ease forwards}
+@keyframes focusPulse{0%{transform:translate(-50%,-50%) scale(1.4);opacity:1}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:0.6}}
 
-        .btn-primary {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, var(--accent), #0099bb);
-            border: none;
-            border-radius: 8px;
-            color: #000;
-            font-size: 1.1rem;
-            font-weight: 700;
-            cursor: pointer;
-            letter-spacing: 1px;
-            margin-top: 6px;
-        }
-        .btn-secondary {
-            width: 100%;
-            padding: 10px;
-            background: var(--card);
-            border: 1px solid var(--accent2);
-            border-radius: 8px;
-            color: var(--accent2);
-            font-size: 0.95rem;
-            font-weight: 700;
-            cursor: pointer;
-            margin-top: 6px;
-        }
+/* captured frame preview */
+#cap-preview-box{width:100%;max-width:420px;display:none;flex-direction:column;gap:6px}
+#cap-preview-canvas{width:100%;border-radius:8px;border:2px solid var(--yellow);display:block}
 
-        /* ===== SCANNER MODAL ===== */
-        #scanner-modal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.95);
-            z-index: 1000;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            padding: 20px;
-            overflow-y: auto;
-            gap: 14px;
-        }
-        #scanner-modal.active { display: flex; }
-        .scanner-title {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.4rem;
-            color: var(--accent);
-            letter-spacing: 2px;
-        }
-        #scanner-container {
-            position: relative;
-            width: 100%;
-            max-width: 400px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid var(--accent);
-        }
-        #scanner-video { width: 100%; display: block; object-fit: cover; }
-        #scanner-overlay {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 160px; height: 120px;
-            border: 3px dashed var(--yellow);
-            box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
-            pointer-events: none;
-        }
-        .scanner-overlay-label {
-            position: absolute;
-            bottom: 6px; left: 50%;
-            transform: translateX(-50%);
-            font-size: 0.7rem; color: var(--yellow);
-            background: rgba(0,0,0,0.7);
-            padding: 2px 8px; border-radius: 4px;
-        }
-        .scanner-btns { display: flex; gap: 10px; width: 100%; max-width: 400px; }
-        .scanner-btns button {
-            flex: 1; padding: 12px;
-            border: none; border-radius: 8px;
-            font-weight: 700; font-size: 0.95rem; cursor: pointer;
-        }
-        #btn-capture { background: var(--green); color: #000; }
-        #btn-close-scan { background: var(--red); color: white; }
+/* colour result */
+#color-result-panel{width:100%;max-width:420px;background:var(--panel);
+  border:2px solid var(--yellow);border-radius:10px;padding:12px;
+  display:none;flex-direction:column;gap:10px}
+#color-result-panel.show{display:flex}
+.cr-row{display:flex;align-items:center;gap:10px;font-size:0.88rem;color:var(--muted)}
+.c-chip{width:36px;height:36px;border-radius:6px;border:1px solid #444;flex-shrink:0}
+.cr-label{font-size:0.75rem;color:var(--muted)}
 
-        /* ===== OCR 辨識結果面板 ===== */
-        #ocr-result-panel {
-            display: none;
-            width: 100%; max-width: 400px;
-            background: var(--panel);
-            border: 2px solid var(--yellow);
-            border-radius: 10px;
-            padding: 14px;
-            gap: 10px;
-            flex-direction: column;
-        }
-        #ocr-result-panel.active { display: flex; }
-        .ocr-result-title { font-size: 0.8rem; color: var(--yellow); font-weight: 700; }
-        .ocr-detected-num {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 2.5rem;
-            color: white;
-            text-align: center;
-            letter-spacing: 4px;
-            background: #1e1e1e;
-            border-radius: 8px;
-            padding: 8px;
-        }
-        .ocr-color-preview {
-            display: flex; gap: 10px; align-items: center;
-            font-size: 0.85rem; color: var(--muted);
-        }
-        .color-chip {
-            width: 30px; height: 30px;
-            border-radius: 6px;
-            border: 1px solid #333;
-        }
-        .ocr-confirm-row { display: flex; gap: 8px; }
-        .ocr-confirm-row button {
-            flex: 1; padding: 10px;
-            border: none; border-radius: 8px;
-            font-weight: 700; font-size: 0.9rem; cursor: pointer;
-        }
-        #btn-ocr-correct { background: var(--green); color: #000; }
-        #btn-ocr-wrong { background: var(--red); color: white; }
-        .manual-override-row {
-            display: none;
-            gap: 8px;
-            align-items: center;
-        }
-        .manual-override-row.active { display: flex; }
-        .manual-override-row input {
-            flex: 1; margin-top: 0;
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.2rem;
-            text-align: center;
-        }
-        .manual-override-row button {
-            padding: 10px 16px;
-            background: var(--accent);
-            border: none; border-radius: 6px;
-            color: #000; font-weight: 700; cursor: pointer;
-        }
+/* bib number input */
+#bib-input-row{display:flex;gap:8px;align-items:center;margin-top:2px}
+#scan-bib-input{flex:1;margin-top:0;font-family:'Rajdhani',sans-serif;
+  font-size:2rem;text-align:center;letter-spacing:4px;padding:8px}
+#btn-scan-save{padding:10px 18px;background:var(--green);border:none;border-radius:6px;
+  color:#000;font-weight:700;font-size:1rem;cursor:pointer;white-space:nowrap}
+#scan-saved-msg{display:none;text-align:center;color:var(--green);font-weight:700;
+  font-size:0.88rem;padding:5px;background:rgba(0,230,118,0.1);border-radius:6px}
 
-        /* ===== 視覺特徵清單 ===== */
-        #profile-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-        .profile-badge {
-            display: flex; align-items: center; gap: 6px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 4px 10px 4px 6px;
-            font-size: 0.85rem;
-        }
-        .profile-badge .badge-num {
-            font-family: 'Rajdhani', sans-serif;
-            font-weight: 700;
-            font-size: 1rem;
-            color: var(--yellow);
-        }
-        .profile-badge .badge-colors { display: flex; gap: 3px; }
-        .profile-badge .badge-colors span {
-            width: 14px; height: 14px;
-            border-radius: 3px;
-            border: 1px solid #333;
-            display: inline-block;
-        }
+.scan-btns{display:flex;gap:8px;width:100%;max-width:420px}
+.scan-btns button{flex:1;padding:12px;border:none;border-radius:8px;
+  font-weight:700;font-size:0.95rem;cursor:pointer}
+#btn-capture{background:var(--green);color:#000}
+#btn-scan-close{background:var(--red);color:#fff}
 
-        /* ===== TEST SECTION ===== */
-        #test-section { display: none; flex-direction: column; height: 100vh; }
+/* profile badges */
+#profile-list{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.pbadge{display:flex;align-items:center;gap:5px;background:var(--card);
+  border:1px solid var(--border);border-radius:20px;padding:3px 9px 3px 5px;font-size:0.82rem}
+.pbadge .pnum{font-family:'Rajdhani',sans-serif;font-weight:700;color:var(--yellow);font-size:0.95rem}
+.pbadge .pcc{display:flex;gap:3px}
+.pbadge .pcc span{width:13px;height:13px;border-radius:3px;border:1px solid #333;display:inline-block}
+.pbadge .pdel{background:none;border:none;color:#666;cursor:pointer;font-size:0.8rem;margin-left:2px;padding:0 2px}
 
-        /* Top bar */
-        #top-bar {
-            background: var(--panel);
-            border-bottom: 1px solid var(--border);
-            padding: 8px 12px;
-            flex-shrink: 0;
-        }
-        #timer {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 3rem;
-            font-weight: 700;
-            color: var(--accent);
-            text-align: center;
-            letter-spacing: 3px;
-            line-height: 1;
-            margin-bottom: 6px;
-        }
-        .control-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-        .ctrl-btn {
-            padding: 7px 14px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            letter-spacing: 0.5px;
-        }
-        #btn-start { background: var(--green); color: #000; }
-        #btn-pause, #btn-zero, #btn-finish { display: none; }
-        #btn-pause { background: var(--accent2); color: white; }
-        #btn-zero { background: #9C27B0; color: white; }
-        #btn-finish { background: var(--accent); color: #000; }
-        #btn-reset { background: var(--red); color: white; }
-        #btn-fullscreen { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
-        #btn-edit-line { background: #5c35ff; color: white; }
+/* ── TEST SECTION ── */
+#test-section{display:none;flex-direction:column;height:100vh}
+#top-bar{background:var(--panel);border-bottom:1px solid var(--border);padding:7px 10px;flex-shrink:0}
+#timer{font-family:'Rajdhani',sans-serif;font-size:3rem;font-weight:700;
+  color:var(--accent);text-align:center;letter-spacing:3px;line-height:1;margin-bottom:5px}
+.ctrl-btns{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+.cbtn{padding:6px 12px;font-size:0.82rem;font-weight:700;border:none;border-radius:5px;cursor:pointer}
+#cbtn-start{background:var(--green);color:#000}
+#cbtn-pause,#cbtn-zero,#cbtn-finish{display:none}
+#cbtn-pause{background:var(--accent2);color:#fff}
+#cbtn-zero{background:#9C27B0;color:#fff}
+#cbtn-finish{background:var(--accent);color:#000}
+#cbtn-reset{background:var(--red);color:#fff}
+#cbtn-fs{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+#cbtn-line{background:#5c35ff;color:#fff}
 
-        /* AI confirm queue */
-        #ai-queue-bar {
-            background: #1a1000;
-            border-bottom: 2px solid var(--accent2);
-            padding: 8px 10px;
-            flex-shrink: 0;
-            display: flex;
-            overflow-x: auto;
-            gap: 8px;
-            min-height: 58px;
-            align-items: center;
-        }
-        .queue-label {
-            font-size: 0.7rem;
-            font-weight: 700;
-            color: var(--accent2);
-            white-space: nowrap;
-            margin-right: 4px;
-            line-height: 1.3;
-        }
-        .ai-card {
-            background: var(--card);
-            border: 1.5px solid var(--accent2);
-            border-radius: 8px;
-            padding: 5px 8px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            white-space: nowrap;
-            flex-shrink: 0;
-            animation: popIn 0.25s ease;
-        }
-        @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .ai-card .bib-tag {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.3rem;
-            font-weight: 700;
-            background: #222;
-            color: var(--yellow);
-            padding: 2px 7px;
-            border-radius: 5px;
-            min-width: 32px;
-            text-align: center;
-        }
-        .ai-card .ai-name { font-size: 0.85rem; font-weight: 700; line-height: 1.3; }
-        .ai-card .ai-time { font-size: 0.7rem; color: var(--muted); }
-        .ai-card .ai-ok { background: var(--green); color: #000; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
-        .ai-card .ai-no { background: var(--red); color: white; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
-        .ai-card .ai-edit { background: #5c35ff; color: white; border: none; border-radius: 4px; padding: 4px 9px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+/* AI queue */
+#ai-bar{background:#1a1000;border-bottom:2px solid var(--accent2);padding:7px 9px;
+  flex-shrink:0;display:flex;overflow-x:auto;gap:7px;min-height:54px;align-items:center}
+.qlabel{font-size:0.68rem;font-weight:700;color:var(--accent2);white-space:nowrap;margin-right:3px;line-height:1.3}
+.ai-card{background:var(--card);border:1.5px solid var(--accent2);border-radius:7px;
+  padding:4px 7px;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;
+  animation:popIn 0.22s ease}
+@keyframes popIn{from{transform:scale(0.6);opacity:0}to{transform:scale(1);opacity:1}}
+.ai-card .btag{font-family:'Rajdhani',sans-serif;font-size:1.25rem;font-weight:700;
+  background:#222;color:var(--yellow);padding:1px 6px;border-radius:4px;min-width:28px;text-align:center}
+.ai-card .aname{font-size:0.82rem;font-weight:700;line-height:1.3}
+.ai-card .atime{font-size:0.66rem;color:var(--muted)}
+.aok{background:var(--green);color:#000;border:none;border-radius:4px;padding:3px 8px;font-weight:700;cursor:pointer;font-size:0.82rem}
+.ano{background:var(--red);color:#fff;border:none;border-radius:4px;padding:3px 8px;font-weight:700;cursor:pointer;font-size:0.82rem}
+.aedit{background:#5c35ff;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-weight:700;cursor:pointer;font-size:0.82rem}
 
-        /* Camera section */
-        #camera-section {
-            height: 200px;
-            background: #000;
-            position: relative;
-            flex-shrink: 0;
-            overflow: hidden;
-        }
-        #viewfinder {
-            width: 100%; height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        #finish-line-canvas {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            z-index: 10;
-        }
-        #finish-line-canvas.editable { pointer-events: all; cursor: crosshair; }
+/* camera section */
+#cam-section{height:200px;background:#000;position:relative;flex-shrink:0;overflow:hidden}
+#viewfinder{width:100%;height:100%;object-fit:cover;display:block}
+#fl-canvas{position:absolute;inset:0;pointer-events:none;z-index:10}
+#fl-canvas.editable{pointer-events:all;cursor:crosshair}
+#vis-canvas{display:none}
 
-        /* Finish line edit overlay */
-        #line-edit-overlay {
-            display: none;
-            position: absolute;
-            inset: 0;
-            background: rgba(92,53,255,0.3);
-            z-index: 9;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 8px;
-        }
-        #line-edit-overlay.active { display: flex; }
-        .line-edit-hint {
-            background: rgba(0,0,0,0.8);
-            color: var(--yellow);
-            font-size: 0.85rem;
-            font-weight: 700;
-            padding: 6px 14px;
-            border-radius: 20px;
-        }
-        .line-edit-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        .line-edit-buttons button {
-            padding: 7px 16px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 700;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-        #btn-save-line { background: var(--green); color: #000; }
-        #btn-reset-line { background: var(--accent2); color: white; }
+/* line edit overlay */
+#line-edit-overlay{display:none;position:absolute;inset:0;
+  background:rgba(92,53,255,0.28);z-index:9;
+  align-items:center;justify-content:center;flex-direction:column;gap:7px}
+#line-edit-overlay.active{display:flex}
+.le-hint{background:rgba(0,0,0,0.82);color:var(--yellow);font-size:0.82rem;
+  font-weight:700;padding:5px 13px;border-radius:20px}
+.le-btns{display:flex;gap:7px}
+.le-btns button{padding:6px 14px;border:none;border-radius:5px;font-weight:700;font-size:0.82rem;cursor:pointer}
+#btn-save-line{background:var(--green);color:#000}
+#btn-reset-line{background:var(--accent2);color:#fff}
 
-        #vision-canvas { display: none; }
-        #btn-simulate { position: absolute; right: 8px; bottom: 8px; z-index: 20; background: rgba(92,53,255,0.85); color: white; border: none; border-radius: 5px; padding: 5px 8px; font-size: 0.7rem; cursor: pointer; }
+/* ground colour preview strip */
+#ground-strip{display:none;flex-direction:row;align-items:center;gap:6px;
+  background:rgba(0,0,0,0.8);border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#fff}
+#ground-strip.show{display:flex}
 
-        /* Student grid */
-        #student-section { padding: 10px; overflow-y: auto; flex-grow: 1; }
-        #student-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
-            gap: 8px;
-        }
-        .student-btn {
-            padding: 10px 5px;
-            font-size: 0.9rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            background: var(--card);
-            color: var(--text);
-            transition: all 0.15s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-        }
-        .student-btn:active { transform: scale(0.94); }
-        .student-btn .bib-badge {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--yellow);
-            background: rgba(0,0,0,0.4);
-            padding: 1px 7px;
-            border-radius: 10px;
-        }
-        .student-btn span { font-size: 0.8rem; opacity: 0.85; }
-        .student-btn.running { background: #0d2a3a; border-color: var(--accent); }
-        .student-btn.last-lap { background: #2a0d1a; border-color: var(--red); }
-        .student-btn.finished { background: #111; border-color: #333; color: #555; pointer-events: none; }
-        .student-btn.just-crossed { background: #0a2a14; border-color: var(--green); }
+#btn-simulate{position:absolute;right:7px;bottom:28px;z-index:20;
+  background:rgba(92,53,255,0.85);color:#fff;border:none;border-radius:4px;
+  padding:4px 7px;font-size:0.65rem;cursor:pointer}
+#det-status{position:absolute;left:5px;bottom:5px;z-index:20;
+  background:rgba(0,0,0,0.72);color:var(--muted);font-size:0.62rem;
+  padding:2px 7px;border-radius:4px;pointer-events:none;line-height:1.6}
 
-        /* Manual correction modal */
-        #correction-modal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            z-index: 500;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        #correction-modal.active { display: flex; }
-        .correction-box {
-            background: var(--panel);
-            border: 2px solid var(--accent2);
-            border-radius: 12px;
-            padding: 20px;
-            width: 100%;
-            max-width: 360px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .correction-box h3 {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.3rem;
-            color: var(--accent2);
-        }
-        .correction-box .detected-num-display {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 3rem;
-            text-align: center;
-            color: white;
-            background: #1a1a1a;
-            border-radius: 8px;
-            padding: 6px;
-            letter-spacing: 4px;
-        }
-        .correction-box p { font-size: 0.85rem; color: var(--muted); }
-        .correction-box input {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.5rem;
-            text-align: center;
-            letter-spacing: 3px;
-        }
-        .correction-btns { display: flex; gap: 8px; }
-        .correction-btns button {
-            flex: 1; padding: 11px;
-            border: none; border-radius: 8px;
-            font-weight: 700; font-size: 0.95rem; cursor: pointer;
-        }
-        #btn-correction-confirm { background: var(--green); color: #000; }
-        #btn-correction-cancel { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+/* student grid */
+#stu-section{padding:9px;overflow-y:auto;flex-grow:1}
+#stu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:7px}
+.sbtn{padding:9px 4px;font-size:0.88rem;border:1px solid var(--border);border-radius:7px;
+  cursor:pointer;background:var(--card);color:var(--text);transition:all 0.12s;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.sbtn:active{transform:scale(0.93)}
+.sbtn .bb{font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;
+  color:var(--yellow);background:rgba(0,0,0,0.4);padding:1px 6px;border-radius:10px}
+.sbtn span{font-size:0.75rem;opacity:0.85}
+.sbtn.running{background:#0d2a3a;border-color:var(--accent)}
+.sbtn.lastlap{background:#2a0d1a;border-color:var(--red)}
+.sbtn.done{background:#111;border-color:#333;color:#555;pointer-events:none}
+.sbtn.crossed{background:#0a2a14;border-color:var(--green)}
 
-        /* Download overlay */
-        #download-section {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.92);
-            z-index: 200;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-        }
-        #download-section.active { display: flex; }
-        #download-section h2 { font-family: 'Rajdhani', sans-serif; font-size: 2rem; color: var(--green); }
-        .dl-btn {
-            width: 80%; max-width: 360px;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1.1rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-        #btn-dl-excel { background: var(--green); color: #000; }
-        #btn-close-download { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+/* correction modal */
+#corr-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);
+  z-index:500;align-items:center;justify-content:center;padding:18px}
+#corr-modal.active{display:flex}
+.cbox{background:var(--panel);border:2px solid var(--accent2);border-radius:11px;
+  padding:18px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:11px}
+.cbox h3{font-family:'Rajdhani',sans-serif;font-size:1.25rem;color:var(--accent2)}
+.cbox .cdisp{font-family:'Rajdhani',sans-serif;font-size:2.8rem;text-align:center;
+  color:#fff;background:#1a1a1a;border-radius:7px;padding:5px;letter-spacing:4px}
+.cbox p{font-size:0.82rem;color:var(--muted)}
+.cbox input{font-family:'Rajdhani',sans-serif;font-size:1.4rem;text-align:center;letter-spacing:3px}
+.cbtns{display:flex;gap:7px}
+.cbtns button{flex:1;padding:10px;border:none;border-radius:7px;font-weight:700;font-size:0.92rem;cursor:pointer}
+#btn-cc{background:var(--green);color:#000}
+#btn-cx{background:var(--card);color:var(--muted);border:1px solid var(--border)}
 
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-    </style>
+/* download overlay */
+#dl-section{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);
+  z-index:200;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+#dl-section.active{display:flex}
+#dl-section h2{font-family:'Rajdhani',sans-serif;font-size:2rem;color:var(--green)}
+.dlbtn{width:80%;max-width:340px;padding:14px;border:none;border-radius:9px;
+  font-size:1.05rem;font-weight:700;cursor:pointer}
+#btn-dl{background:var(--green);color:#000}
+#btn-dl-close{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
 </head>
 <body>
 
-<!-- ===================== SETUP SECTION ===================== -->
+<!-- ═══════════════ SETUP ═══════════════ -->
 <div id="setup-section">
-    <div class="setup-header">
-        <h1>⚡ LapTime-Vision v2</h1>
-        <p>智慧視覺跑步計時系統</p>
-    </div>
+  <div class="setup-header">
+    <h1>⚡ LapTime-Vision v3</h1>
+    <p>智慧視覺跑步計時系統</p>
+  </div>
 
-    <!-- 基本參數 -->
-    <div class="setup-group">
-        <div class="group-title">📋 測驗基本參數</div>
-        <input type="text" id="input-test-name" placeholder="測驗名稱 / 班級">
-        <select id="sel-distance" style="margin-top:8px;">
-            <option value="800">800 公尺</option>
-            <option value="1600" selected>1600 公尺</option>
-        </select>
-        <select id="sel-track" style="margin-top:8px;">
-            <option value="200" selected>200 公尺跑道</option>
-            <option value="300">300 公尺跑道</option>
-            <option value="400">400 公尺跑道</option>
-        </select>
-    </div>
+  <!-- 基本參數 -->
+  <div class="setup-group">
+    <div class="gtitle">📋 測驗基本參數</div>
+    <input type="text" id="inp-name" placeholder="測驗名稱 / 班級">
+    <select id="sel-dist" style="margin-top:8px">
+      <option value="800">800 公尺</option>
+      <option value="1600" selected>1600 公尺</option>
+    </select>
+    <select id="sel-track" style="margin-top:8px">
+      <option value="200" selected>200 公尺跑道</option>
+      <option value="300">300 公尺跑道</option>
+      <option value="400">400 公尺跑道</option>
+    </select>
+  </div>
 
-    <!-- 相機 -->
-    <div class="setup-group">
-        <div class="group-title">📷 主攝影機 (越線偵測)</div>
-        <select id="sel-camera"></select>
+  <!-- 相機選擇 + 即時預覽 -->
+  <div class="setup-group">
+    <div class="gtitle">📷 主攝影機（越線偵測）</div>
+    <select id="sel-cam" onchange="previewCam(this.value)"></select>
+    <!-- ★ 即時預覽視窗 -->
+    <div id="cam-preview-wrap">
+      <video id="cam-preview-video" autoplay playsinline muted></video>
+      <div id="cam-preview-info">
+        <span id="cam-preview-name">—</span>
+        <span id="cam-preview-res">—</span>
+      </div>
     </div>
+    <p style="font-size:0.72rem;color:var(--muted);margin-top:6px">
+      切換選項即可預覽各鏡頭畫面；選好後繼續設定即可。
+    </p>
+  </div>
 
-    <!-- 號碼衣特徵學習 -->
-    <div class="setup-group">
-        <div class="group-title">🎽 號碼衣視覺學習</div>
-        <button class="btn-secondary" onclick="openScanner()">📸 啟動相機辨識號碼衣</button>
-        <div id="profile-list"></div>
-        <p style="font-size:0.78rem; color:var(--muted); margin-top:10px;">格式：[號碼] [姓名]（例：15 王小明）</p>
-        <textarea id="manual-names" rows="5" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
-    </div>
+  <!-- 號碼衣學習 -->
+  <div class="setup-group">
+    <div class="gtitle">🎽 號碼衣顏色學習</div>
+    <button class="btn-sec" onclick="openScanner()">📸 啟動相機學習號碼衣</button>
+    <div id="profile-list"></div>
+    <p style="font-size:0.75rem;color:var(--muted);margin-top:10px">格式：[號碼] [姓名]（例：15 王小明）</p>
+    <textarea id="ta-names" rows="5" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
+  </div>
 
-    <button class="btn-primary" onclick="startSetup()">進入視覺計時畫面 →</button>
+  <button class="btn-primary" onclick="startSetup()">進入視覺計時畫面 →</button>
 </div>
 
-<!-- ===================== SCANNER MODAL ===================== -->
+<!-- ═══════════════ SCANNER MODAL ═══════════════ -->
 <div id="scanner-modal">
-    <div class="scanner-title">🎽 號碼衣特徵學習</div>
-    <p style="color:var(--muted); font-size:0.85rem; text-align:center;">將號碼衣置於黃色虛線框中，拍攝後確認辨識結果</p>
+  <div class="scan-title">🎽 號碼衣顏色學習</div>
+  <p style="color:var(--muted);font-size:0.8rem;text-align:center;max-width:420px">
+    對準號碼衣後點「📸 擷取」，系統分析底色與字色。<br>
+    <span style="color:var(--yellow)">號碼請手動輸入 → 點「✔ 儲存」完成登記</span>
+  </p>
 
-    <div id="scanner-container">
-        <video id="scanner-video" autoplay playsinline muted></video>
-        <div id="scanner-overlay"></div>
-        <div class="scanner-overlay-label">號碼衣對準此區域</div>
+  <div id="scan-cam-box">
+    <video id="scan-video" autoplay playsinline muted></video>
+    <!-- ★ ROI 框（可拖拉） -->
+    <canvas id="roi-canvas"></canvas>
+    <div id="focus-ring"></div>
+    <div style="position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+      font-size:0.65rem;color:var(--yellow);background:rgba(0,0,0,0.65);
+      padding:2px 9px;border-radius:4px;pointer-events:none">
+      點擊畫面可對焦
     </div>
-    <canvas id="snapshot-canvas" style="display:none;"></canvas>
+  </div>
 
-    <!-- OCR 結果面板 -->
-    <div id="ocr-result-panel">
-        <div class="ocr-result-title">🔍 系統辨識結果</div>
-        <div id="ocr-detected-num" class="ocr-detected-num">--</div>
-        <div class="ocr-color-preview">
-            <span>底色</span>
-            <div id="bib-color-chip" class="color-chip"></div>
-            <span style="margin-left:10px;">字色</span>
-            <div id="text-color-chip" class="color-chip"></div>
-        </div>
-        <p style="font-size:0.8rem; color:var(--muted);">辨識是否正確？</p>
-        <div class="ocr-confirm-row">
-            <button id="btn-ocr-correct" onclick="confirmOcrResult()">✔️ 正確</button>
-            <button id="btn-ocr-wrong" onclick="showManualOcrInput()">✏️ 手動修正</button>
-        </div>
-        <div id="manual-override-row" class="manual-override-row">
-            <input type="number" id="manual-bib-input" placeholder="輸入正確號碼">
-            <button onclick="saveManualBib()">確認</button>
-        </div>
-    </div>
+  <!-- 擷取後預覽 -->
+  <div id="cap-preview-box">
+    <canvas id="cap-canvas"></canvas>
+    <p style="font-size:0.7rem;color:var(--muted);text-align:center">▲ 擷取畫面（黃框為分析區域）</p>
+  </div>
 
-    <div class="scanner-btns">
-        <button id="btn-capture" onclick="captureAndAnalyze()">📸 擷取分析</button>
-        <button id="btn-close-scan" onclick="closeScanner()">完成 / 關閉</button>
+  <!-- 顏色結果 + 號碼輸入 -->
+  <div id="color-result-panel">
+    <div style="font-size:0.78rem;color:var(--yellow);font-weight:700">🎨 偵測到的顏色特徵</div>
+    <div class="cr-row">
+      <div id="bib-chip" class="c-chip"></div>
+      <div>
+        <div style="font-size:0.88rem;color:var(--text)">號碼衣底色</div>
+        <div class="cr-label" id="bib-chip-label"></div>
+      </div>
     </div>
+    <div class="cr-row">
+      <div id="txt-chip" class="c-chip"></div>
+      <div>
+        <div style="font-size:0.88rem;color:var(--text)">字體顏色</div>
+        <div class="cr-label" id="txt-chip-label"></div>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px">
+      <p style="font-size:0.82rem;color:var(--yellow);font-weight:700;margin-bottom:7px">
+        ✏️ 請輸入這件號碼衣的號碼：
+      </p>
+      <div id="bib-input-row">
+        <input type="number" id="scan-bib-input" placeholder="15" min="1" max="999">
+        <button id="btn-scan-save" onclick="saveScannedBib()">✔ 儲存</button>
+      </div>
+      <div id="scan-saved-msg"></div>
+    </div>
+  </div>
+
+  <div class="scan-btns">
+    <button id="btn-capture" onclick="captureFrame()">📸 擷取分析</button>
+    <button id="btn-scan-close" onclick="closeScanner()">完成 / 關閉</button>
+  </div>
 </div>
 
-<!-- ===================== TEST SECTION ===================== -->
+<!-- ═══════════════ TEST SECTION ═══════════════ -->
 <div id="test-section">
-    <!-- Timer + Controls -->
-    <div id="top-bar">
-        <div id="timer">00:00.00</div>
-        <div class="control-btns">
-            <button id="btn-fullscreen" class="ctrl-btn" onclick="toggleFullScreen()">全螢幕</button>
-            <button id="btn-reset" class="ctrl-btn" onclick="location.reload()">⬅ 設定</button>
-            <button id="btn-zero" class="ctrl-btn" onclick="zeroTimer()">歸零</button>
-            <button id="btn-finish" class="ctrl-btn" onclick="finishTest()">結束測驗</button>
-            <button id="btn-pause" class="ctrl-btn" onclick="pauseTimer()">暫停</button>
-            <button id="btn-start" class="ctrl-btn" onclick="startTimer()">🚀 開始 (Go)</button>
-            <button id="btn-edit-line" class="ctrl-btn" onclick="toggleLineEdit()">✏️ 調整終點線</button>
-        </div>
+  <div id="top-bar">
+    <div id="timer">00:00.00</div>
+    <div class="ctrl-btns">
+      <button id="cbtn-fs"     class="cbtn" onclick="toggleFS()">全螢幕</button>
+      <button id="cbtn-reset"  class="cbtn" onclick="location.reload()">⬅ 設定</button>
+      <button id="cbtn-zero"   class="cbtn" onclick="zeroTimer()">歸零</button>
+      <button id="cbtn-finish" class="cbtn" onclick="finishTest()">結束測驗</button>
+      <button id="cbtn-pause"  class="cbtn" onclick="pauseTimer()">暫停</button>
+      <button id="cbtn-start"  class="cbtn" onclick="startTimer()">🚀 開始 (Go)</button>
+      <button id="cbtn-line"   class="cbtn" onclick="toggleLineEdit()">✏️ 調整終點線</button>
     </div>
+  </div>
 
-    <!-- AI 待確認緩衝區 -->
-    <div id="ai-queue-bar">
-        <div class="queue-label">視覺辨識<br><span style="font-size:0.65rem;">待確認</span></div>
-        <div id="ai-queue-container" style="display:flex; gap:8px;"></div>
-    </div>
+  <div id="ai-bar">
+    <div class="qlabel">視覺辨識<br><span style="font-size:0.6rem">待確認</span></div>
+    <div id="ai-queue"></div>
+  </div>
 
-    <!-- Camera -->
-    <div id="camera-section">
-        <video id="viewfinder" autoplay playsinline muted></video>
-        <canvas id="finish-line-canvas"></canvas>
-        <canvas id="vision-canvas"></canvas>
-        <div id="line-edit-overlay">
-            <div class="line-edit-hint">📍 步驟1：拖曳畫出終點線 &nbsp;→&nbsp; 步驟2：學習地面顏色</div>
-            <div class="line-edit-buttons">
-                <button id="btn-learn-ground" onclick="learnGroundColors()" style="background:#ffea00;color:#000;">🎨 學習地面色</button>
-                <button id="btn-save-line" onclick="saveFinishLine()">✔️ 確認完成</button>
-                <button id="btn-reset-line" onclick="resetFinishLine()">↺ 重設線條</button>
-            </div>
-            <!-- 地面色學習結果預覽 -->
-            <div id="ground-color-preview" style="display:none; background:rgba(0,0,0,0.82); border-radius:8px; padding:6px 12px; font-size:0.7rem; color:#fff; display:none; align-items:center; gap:8px; flex-wrap:wrap; max-width:340px; justify-content:center;">
-                <span style="color:#ffea00; font-weight:700;">已學習地面色：</span>
-                <span id="gcp-track-swatch" style="display:inline-flex;align-items:center;gap:4px;">
-                    跑道 <span id="gcp-track-chip" style="width:18px;height:18px;border-radius:3px;border:1px solid #555;display:inline-block;"></span>
-                </span>
-                <span id="gcp-line-swatch" style="display:inline-flex;align-items:center;gap:4px;">
-                    道次字 <span id="gcp-line-chip" style="width:18px;height:18px;border-radius:3px;border:1px solid #555;display:inline-block;"></span>
-                </span>
-                <span id="gcp-samples" style="color:#aaa;"></span>
-            </div>
-        </div>
-        <button id="btn-simulate" onclick="simulateAICrossing()">⚡ 模擬越線</button>
-        <div id="detection-status" style="position:absolute;left:6px;bottom:6px;z-index:20;background:rgba(0,0,0,0.72);color:#7a9ab5;font-size:0.65rem;padding:3px 8px;border-radius:4px;pointer-events:none;line-height:1.6;">準備中…</div>
+  <div id="cam-section">
+    <video id="viewfinder" autoplay playsinline muted></video>
+    <canvas id="fl-canvas"></canvas>
+    <canvas id="vis-canvas"></canvas>
+    <div id="line-edit-overlay">
+      <div class="le-hint">📍 拖曳畫出虛擬終點線（自動學習跑道色）</div>
+      <div class="le-btns">
+        <button id="btn-save-line"  onclick="saveFinishLine()">✔️ 確認</button>
+        <button id="btn-reset-line" onclick="resetFinishLine()">↺ 重設</button>
+      </div>
+      <!-- 地面色學習結果 -->
+      <div id="ground-strip">
+        <span style="color:var(--yellow);font-weight:700">跑道色已學習：</span>
+        <span id="gs-chip1" style="width:16px;height:16px;border-radius:3px;border:1px solid #555;display:inline-block"></span>
+        <span id="gs-chip2" style="width:16px;height:16px;border-radius:3px;border:1px solid #555;display:inline-block"></span>
+        <span id="gs-info" style="color:var(--muted)"></span>
+      </div>
     </div>
+    <button id="btn-simulate" onclick="simulateCrossing()">⚡ 模擬越線</button>
+    <div id="det-status">準備中…</div>
+  </div>
 
-    <!-- Student grid -->
-    <div id="student-section">
-        <div id="student-grid"></div>
-    </div>
+  <div id="stu-section"><div id="stu-grid"></div></div>
 
-    <!-- Download overlay -->
-    <div id="download-section">
-        <h2>🎉 測驗結束</h2>
-        <button id="btn-dl-excel" class="dl-btn" onclick="exportExcel()">📊 下載成績單 (.xlsx)</button>
-        <button id="btn-close-download" class="dl-btn" onclick="document.getElementById('download-section').classList.remove('active')">繼續查看</button>
-    </div>
+  <div id="dl-section">
+    <h2>🎉 測驗結束</h2>
+    <button id="btn-dl"       class="dlbtn" onclick="exportXLSX()">📊 下載成績單 (.xlsx)</button>
+    <button id="btn-dl-close" class="dlbtn" onclick="document.getElementById('dl-section').classList.remove('active')">繼續查看</button>
+  </div>
 </div>
 
-<!-- ===================== CORRECTION MODAL ===================== -->
-<div id="correction-modal">
-    <div class="correction-box">
-        <h3>✏️ 手動修正號碼</h3>
-        <div id="correction-detected-display" class="detected-num-display">--</div>
-        <p>系統辨識上方號碼，若有誤請於下方輸入正確號碼後確認：</p>
-        <input type="number" id="correction-input" placeholder="輸入正確號碼">
-        <div class="correction-btns">
-            <button id="btn-correction-confirm" onclick="confirmCorrection()">✔️ 確認修正</button>
-            <button id="btn-correction-cancel" onclick="cancelCorrection()">取消</button>
-        </div>
+<!-- ═══════════════ CORRECTION MODAL ═══════════════ -->
+<div id="corr-modal">
+  <div class="cbox">
+    <h3>✏️ 手動修正號碼</h3>
+    <div id="corr-disp" class="cdisp">--</div>
+    <p>系統辨識上方號碼，若有誤請輸入正確號碼：</p>
+    <input type="number" id="corr-input" placeholder="輸入正確號碼">
+    <div class="cbtns">
+      <button id="btn-cc" onclick="confirmCorr()">✔️ 確認修正</button>
+      <button id="btn-cx" onclick="cancelCorr()">取消</button>
     </div>
+  </div>
 </div>
 
 <script>
-// ================================================================
+// ════════════════════════════════════════════════
 // 全局狀態
-// ================================================================
-let targetLaps = 8;
-let students = [];
-let aiQueue = [];
-let aiQueueCounter = 0;
-let isRunning = false;
-let startTime, difference = 0, timeSaved = 0;
-let timerAnimationId;
+// ════════════════════════════════════════════════
+let targetLaps=8, students=[], aiQueue=[], aiCnt=0;
+let isRunning=false, startTime, difference=0, timeSaved=0, timerRAF;
+let visionProfiles=[]; // {number,bibColor,textColor}
+let previewStream=null, scannerStream=null, mainStream=null, visRAF=null;
 
-let visionProfiles = []; // { number, bibColor, textColor }
-let mainCameraStream = null;
-let scannerStream = null;
-let visionAnimationId = null;
-
-// 虛擬終點線狀態 (比例座標 0~1)
-let finishLine = { x1: 0.5, y1: 0, x2: 0.5, y2: 1 }; // 預設正中央垂直線
-let lineEditMode = false;
-let lineDrawing = false;
-let lineDrawStart = null;
-let tempLine = null;
-
-// OCR 暫存
-let pendingOcrCapture = null; // { bibHex, textHex, rawNum }
-
-// 修正彈窗暫存
-let pendingCorrectionUid = null;
+// 終點線（比例座標）
+let FL={x1:0.5,y1:0,x2:0.5,y2:1};
+let lineEditMode=false, lineDrawing=false, lineStart=null, tempFL=null;
 
 // 越線偵測
-let lastLinePixels = null;
-let crossingCooldown = false;
+let lastPixels=null, cooldown=false;
+let baselineFrame=null, baselineReady=false, baselineCnt=0;
+const BASELINE_N=30;
 
-// ================================================================
-// 頁面載入
-// ================================================================
-window.addEventListener('load', async () => {
-    const sel = document.getElementById('sel-camera');
-    try {
-        const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        devices.filter(d => d.kind === 'videoinput').forEach((d, i) => {
-            const opt = document.createElement('option');
-            opt.value = d.deviceId;
-            opt.text = d.label || `攝影機 ${i+1}`;
-            sel.appendChild(opt);
-        });
-        tmp.getTracks().forEach(t => t.stop());
-    } catch {
-        sel.innerHTML = '<option value="none">無相機權限</option>';
-    }
+// 地面色 clusters
+let groundClusters=[]; // [{r,g,b,tol}]
+let groundLearned=false;
+
+// 修正暫存
+let corrUid=null;
+
+// 擷取暫存
+let pendingCapture=null; // {bibHex,txtHex}
+
+// ════════════════════════════════════════════════
+// 頁面載入 — 掃描可用鏡頭
+// ════════════════════════════════════════════════
+window.addEventListener('load', async ()=>{
+  const sel=document.getElementById('sel-cam');
+  try{
+    const tmp=await navigator.mediaDevices.getUserMedia({video:true});
+    tmp.getTracks().forEach(t=>t.stop());
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(d=>d.kind==='videoinput');
+    cams.forEach((d,i)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId;
+      o.text=d.label||`攝影機 ${i+1}`;
+      sel.appendChild(o);
+    });
+    if(cams.length>0) previewCam(sel.value);
+  }catch{
+    sel.innerHTML='<option value="none">無相機權限</option>';
+  }
 });
 
-// ================================================================
-// 模組一：號碼衣視覺掃描 (設定頁面)
-// ================================================================
-function openScanner() {
-    document.getElementById('scanner-modal').classList.add('active');
-    document.getElementById('ocr-result-panel').classList.remove('active');
-    document.getElementById('manual-override-row').classList.remove('active');
-    pendingOcrCapture = null;
-    startScannerCamera();
-}
+// ════════════════════════════════════════════════
+// ★ 修改3：鏡頭預覽
+// ════════════════════════════════════════════════
+async function previewCam(deviceId){
+  if(!deviceId||deviceId==='none') return;
+  const wrap=document.getElementById('cam-preview-wrap');
+  const video=document.getElementById('cam-preview-video');
+  const nameEl=document.getElementById('cam-preview-name');
+  const resEl=document.getElementById('cam-preview-res');
 
-async function startScannerCamera() {
-    const video = document.getElementById('scanner-video');
-    try {
-        scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = scannerStream;
-    } catch {
-        alert('無法開啟相機！');
-        closeScanner();
-    }
-}
+  if(previewStream) previewStream.getTracks().forEach(t=>t.stop());
+  wrap.style.display='block';
+  nameEl.textContent='連線中…';
+  resEl.textContent='';
 
-function closeScanner() {
-    if (scannerStream) scannerStream.getTracks().forEach(t => t.stop());
-    document.getElementById('scanner-modal').classList.remove('active');
-}
-
-function captureAndAnalyze() {
-    const video = document.getElementById('scanner-video');
-    const canvas = document.getElementById('snapshot-canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // 擷取中央框區域做顏色分析
-    const bw = 160, bh = 120;
-    const sx = (canvas.width - bw) / 2;
-    const sy = (canvas.height - bh) / 2;
-    const imgData = ctx.getImageData(sx, sy, bw, bh).data;
-
-    let rSum = 0, gSum = 0, bSum = 0, cnt = 0;
-    let darkMin = 255, darkR = 0, darkG = 0, darkB = 0;
-
-    for (let i = 0; i < imgData.length; i += 4) {
-        const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
-        rSum += r; gSum += g; bSum += b; cnt++;
-        const bright = (r*299 + g*587 + b*114) / 1000;
-        if (bright < darkMin) { darkMin = bright; darkR = r; darkG = g; darkB = b; }
-    }
-    const avgR = Math.round(rSum/cnt), avgG = Math.round(gSum/cnt), avgB = Math.round(bSum/cnt);
-    const bibHex = rgbToHex(avgR, avgG, avgB);
-    const textHex = rgbToHex(darkR, darkG, darkB);
-
-    // 嘗試 OCR 數字辨識（利用對比度推斷）
-    // 實際環境可接 Tesseract.js；這裡先用顏色推斷 + 讓老師確認
-    const guessedNum = guessNumberFromImage(ctx, sx, sy, bw, bh);
-
-    pendingOcrCapture = { bibHex, textHex, guessedNum };
-
-    // 顯示辨識結果面板
-    document.getElementById('ocr-detected-num').textContent = guessedNum || '??';
-    document.getElementById('bib-color-chip').style.background = bibHex;
-    document.getElementById('text-color-chip').style.background = textHex;
-    document.getElementById('ocr-result-panel').classList.add('active');
-    document.getElementById('manual-override-row').classList.remove('active');
-}
-
-// 簡單模擬 OCR 數字辨識（實際部署可換 Tesseract.js）
-function guessNumberFromImage(ctx, sx, sy, bw, bh) {
-    // 利用已有 visionProfiles 的顏色相似度來猜測
-    // 實際為：返回 null 讓老師輸入；這裡模擬返回隨機號
-    return null; // 返回 null = 不確定，讓老師輸入
-}
-
-function confirmOcrResult() {
-    if (!pendingOcrCapture) return;
-    const num = document.getElementById('ocr-detected-num').textContent;
-    if (num === '??' || !num) {
-        showManualOcrInput();
-        return;
-    }
-    saveBibProfile(num, pendingOcrCapture.bibHex, pendingOcrCapture.textHex);
-    resetOcrPanel();
-}
-
-function showManualOcrInput() {
-    document.getElementById('manual-override-row').classList.add('active');
-    document.getElementById('manual-bib-input').focus();
-}
-
-function saveManualBib() {
-    const input = document.getElementById('manual-bib-input');
-    const num = input.value.trim();
-    if (!num) { alert('請輸入號碼！'); return; }
-    if (!pendingOcrCapture) return;
-    saveBibProfile(num, pendingOcrCapture.bibHex, pendingOcrCapture.textHex);
-    input.value = '';
-    resetOcrPanel();
-}
-
-function saveBibProfile(num, bibHex, textHex) {
-    // 同號碼只更新（不重複）
-    const existIdx = visionProfiles.findIndex(p => p.number === num);
-    if (existIdx > -1) {
-        visionProfiles[existIdx] = { number: num, bibColor: bibHex, textColor: textHex };
-    } else {
-        visionProfiles.push({ number: num, bibColor: bibHex, textColor: textHex });
-        // 自動加入名單
-        const ta = document.getElementById('manual-names');
-        const lines = ta.value ? ta.value.split('\n') : [];
-        const exists = lines.some(l => l.trim().startsWith(num + ' ') || l.trim() === num);
-        if (!exists) ta.value = (ta.value ? ta.value + '\n' : '') + `${num} 學生${num}號`;
-    }
-    renderProfileList();
-}
-
-function resetOcrPanel() {
-    document.getElementById('ocr-result-panel').classList.remove('active');
-    document.getElementById('manual-override-row').classList.remove('active');
-    pendingOcrCapture = null;
-}
-
-function renderProfileList() {
-    const container = document.getElementById('profile-list');
-    container.innerHTML = '';
-    visionProfiles.forEach(p => {
-        const badge = document.createElement('div');
-        badge.className = 'profile-badge';
-        badge.innerHTML = `
-            <span class="badge-num">#${p.number}</span>
-            <span class="badge-colors">
-                <span style="background:${p.bibColor}" title="底色"></span>
-                <span style="background:${p.textColor}" title="字色"></span>
-            </span>
-        `;
-        container.appendChild(badge);
+  try{
+    previewStream=await navigator.mediaDevices.getUserMedia({
+      video:{
+        deviceId:{exact:deviceId},
+        width:{ideal:1280},height:{ideal:720},
+        // ★ 修改2：自動對焦
+        focusMode:'continuous'
+      }
     });
-}
-
-function rgbToHex(r, g, b) {
-    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-}
-
-// ================================================================
-// 進入測驗
-// ================================================================
-async function startSetup() {
-    const dist = parseInt(document.getElementById('sel-distance').value);
-    const track = parseInt(document.getElementById('sel-track').value);
-    targetLaps = Math.ceil(dist / track);
-
-    const rawNames = document.getElementById('manual-names').value.trim().split('\n');
-    students = [];
-    rawNames.forEach((line, i) => {
-        if (!line.trim()) return;
-        const match = line.trim().match(/^(\d+)?\s*(.*)$/);
-        const bib = match[1] || '-';
-        const name = match[2] || `學生${i+1}`;
-        students.push({
-            id: students.length, bib, name,
-            currentLap: 0, lapTimes: [], lapSplitTimes: [],
-            lastLapTimeMs: 0, lastLapTimeDifference: 0, timeoutId: null
-        });
-    });
-
-    if (!students.length) { alert('請至少輸入一位學生！'); return; }
-
-    document.getElementById('setup-section').style.display = 'none';
-    document.getElementById('test-section').style.display = 'flex';
-
-    renderGrid();
-    renderAIQueue();
-    await startMainCamera();
-}
-
-// ================================================================
-// 模組二：主相機 + 虛擬終點線繪製
-// ================================================================
-async function startMainCamera() {
-    const deviceId = document.getElementById('sel-camera').value;
-    const video = document.getElementById('viewfinder');
-    if (deviceId === 'none') return;
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
-        });
-        mainCameraStream = stream;
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-            video.play();
-            setupFinishLineCanvas();
-            startVisionLoop();
-        };
-    } catch (err) { console.error('相機載入失敗', err); }
-}
-
-function setupFinishLineCanvas() {
-    const cam = document.getElementById('camera-section');
-    const flCanvas = document.getElementById('finish-line-canvas');
-    flCanvas.width = cam.offsetWidth;
-    flCanvas.height = cam.offsetHeight;
-    drawFinishLine();
-    setupLineDrawing();
-}
-
-function drawFinishLine(draft) {
-    const flCanvas = document.getElementById('finish-line-canvas');
-    const ctx = flCanvas.getContext('2d');
-    const w = flCanvas.width, h = flCanvas.height;
-    ctx.clearRect(0, 0, w, h);
-
-    const line = draft || finishLine;
-    const x1 = line.x1 * w, y1 = line.y1 * h;
-    const x2 = line.x2 * w, y2 = line.y2 * h;
-
-    ctx.save();
-    if (lineEditMode) {
-        ctx.strokeStyle = '#5c35ff';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([8, 6]);
-    } else {
-        ctx.strokeStyle = 'rgba(255,30,30,0.8)';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([]);
-        ctx.shadowColor = '#ff1744';
-        ctx.shadowBlur = 8;
-    }
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.restore();
-
-    // ★ 有效偵測帶視覺標示（中帶 35%~75%，下方地面忽略區）
-    if (!lineEditMode) {
-        const bandTopY    = h * 0.35;
-        const bandBottomY = h * 0.75;
-        // 虛線邊界
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0,212,255,0.4)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.moveTo(0, bandTopY);    ctx.lineTo(w, bandTopY);    ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, bandBottomY); ctx.lineTo(w, bandBottomY); ctx.stroke();
-        ctx.restore();
-        // 有效帶半透明綠色
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,230,118,0.07)';
-        ctx.fillRect(0, bandTopY, w, bandBottomY - bandTopY);
-        // 地面忽略帶（橘色提示）
-        ctx.fillStyle = 'rgba(255,100,30,0.07)';
-        ctx.fillRect(0, bandBottomY, w, h - bandBottomY);
-        ctx.restore();
-        // 文字標籤
-        ctx.save();
-        ctx.font = 'bold 10px sans-serif';
-        ctx.fillStyle = 'rgba(0,212,255,0.8)';
-        ctx.fillText('▶ 有效偵測區（號碼衣）', 4, bandTopY - 3);
-        ctx.fillStyle = 'rgba(255,130,50,0.8)';
-        ctx.fillText('▶ 地面忽略區（道次號碼不計）', 4, bandBottomY + 11);
-        ctx.restore();
-    }
-
-    // 終點線標籤
-    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 8;
-    ctx.save();
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = lineEditMode ? '#5c35ff' : 'rgba(255,30,30,0.9)';
-    ctx.fillText('⬛ 虛擬終點線', mx - 40, my);
-    ctx.restore();
-}
-
-function setupLineDrawing() {
-    const flCanvas = document.getElementById('finish-line-canvas');
-    flCanvas.addEventListener('mousedown', onLineMouseDown);
-    flCanvas.addEventListener('mousemove', onLineMouseMove);
-    flCanvas.addEventListener('mouseup', onLineMouseUp);
-    flCanvas.addEventListener('touchstart', onLineTouchStart, { passive: false });
-    flCanvas.addEventListener('touchmove', onLineTouchMove, { passive: false });
-    flCanvas.addEventListener('touchend', onLineTouchEnd);
-}
-
-function getCanvasPos(e, canvas) {
-    const rect = canvas.getBoundingClientRect();
-    const src = e.touches ? e.touches[0] : e;
-    return {
-        x: (src.clientX - rect.left) / rect.width,
-        y: (src.clientY - rect.top) / rect.height
+    video.srcObject=previewStream;
+    video.onloadedmetadata=()=>{
+      const t=previewStream.getVideoTracks()[0];
+      const s=t.getSettings();
+      nameEl.textContent=t.label||'攝影機';
+      resEl.textContent=`${s.width||'?'}×${s.height||'?'}`;
     };
+  }catch(err){
+    nameEl.textContent='無法開啟此鏡頭';
+    resEl.textContent=err.name;
+  }
 }
 
-function onLineMouseDown(e) {
-    if (!lineEditMode) return;
-    lineDrawing = true;
-    lineDrawStart = getCanvasPos(e, e.currentTarget);
+// ════════════════════════════════════════════════
+// ★ 修改1：號碼衣掃描器（完整改版）
+// ════════════════════════════════════════════════
+function openScanner(){
+  document.getElementById('scanner-modal').classList.add('active');
+  document.getElementById('color-result-panel').classList.remove('show');
+  document.getElementById('cap-preview-box').style.display='none';
+  document.getElementById('scan-saved-msg').style.display='none';
+  document.getElementById('scan-bib-input').value='';
+  pendingCapture=null;
+  startScanCam();
 }
-function onLineMouseMove(e) {
-    if (!lineEditMode || !lineDrawing) return;
-    const pos = getCanvasPos(e, e.currentTarget);
-    drawFinishLine({ x1: lineDrawStart.x, y1: lineDrawStart.y, x2: pos.x, y2: pos.y });
-    tempLine = { x1: lineDrawStart.x, y1: lineDrawStart.y, x2: pos.x, y2: pos.y };
-}
-function onLineMouseUp(e) {
-    if (!lineEditMode || !lineDrawing) return;
-    lineDrawing = false;
-    if (tempLine) { finishLine = { ...tempLine }; tempLine = null; }
-    drawFinishLine();
-}
-function onLineTouchStart(e) { e.preventDefault(); onLineMouseDown(e); }
-function onLineTouchMove(e) { e.preventDefault(); onLineMouseMove(e); }
-function onLineTouchEnd(e) { onLineMouseUp(e); }
 
-function toggleLineEdit() {
-    lineEditMode = !lineEditMode;
-    const overlay = document.getElementById('line-edit-overlay');
-    const flCanvas = document.getElementById('finish-line-canvas');
-    const btn = document.getElementById('btn-edit-line');
-    if (lineEditMode) {
-        overlay.classList.add('active');
-        flCanvas.classList.add('editable');
-        btn.style.background = '#ff6b35';
-        // 進入編輯模式時，立刻把最新視訊幀繪入 vision-canvas，供 learnGroundColors 取樣
-        const video = document.getElementById('viewfinder');
-        const vCanvas = document.getElementById('vision-canvas');
-        if (video && vCanvas && video.videoWidth) {
-            vCanvas.width = video.videoWidth;
-            vCanvas.height = video.videoHeight;
-            vCanvas.getContext('2d').drawImage(video, 0, 0);
-        }
-        // 若已學習過，重置按鈕文字讓老師可重新學習
-        document.getElementById('btn-learn-ground').textContent = '🎨 學習地面色';
-        document.getElementById('btn-learn-ground').style.background = '#ffea00';
-    } else {
-        overlay.classList.remove('active');
-        flCanvas.classList.remove('editable');
-        btn.style.background = '#5c35ff';
+async function startScanCam(){
+  const video=document.getElementById('scan-video');
+  const roiCanvas=document.getElementById('roi-canvas');
+  try{
+    // ★ 修改2：自動對焦 + 高解析度
+    scannerStream=await navigator.mediaDevices.getUserMedia({video:{
+      facingMode:'environment',
+      width:{ideal:1920},height:{ideal:1080},
+      focusMode:'continuous',
+      focusDistance:0.3,   // 近距離對焦（號碼衣距離約30-60cm）
+      zoom:1
+    }});
+    video.srcObject=scannerStream;
+    video.onloadedmetadata=()=>{
+      video.play();
+      setupROICanvas(roiCanvas, video);
+    };
+    // 啟用連續對焦
+    const track=scannerStream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.();
+    if(caps?.focusMode?.includes('continuous')){
+      await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
     }
-    drawFinishLine();
+  }catch(err){
+    alert(`無法開啟相機：${err.message}`);
+    closeScanner();
+  }
 }
 
-function saveFinishLine() {
-    if (tempLine) { finishLine = { ...tempLine }; tempLine = null; }
-    lineEditMode = false;
-    document.getElementById('line-edit-overlay').classList.remove('active');
-    document.getElementById('finish-line-canvas').classList.remove('editable');
-    document.getElementById('btn-edit-line').style.background = '#5c35ff';
-    drawFinishLine();
+// 設定 ROI canvas（繪製對焦框與暗化遮罩）
+function setupROICanvas(roiCanvas, video){
+  const updateSize=()=>{
+    roiCanvas.width=video.offsetWidth||video.clientWidth||400;
+    roiCanvas.height=video.offsetHeight||video.clientHeight||300;
+    drawROI(roiCanvas);
+  };
+  updateSize();
+  // 點擊畫面觸發對焦
+  document.getElementById('scan-cam-box').addEventListener('click', e=>{
+    tapFocus(e, video);
+  },{once:false});
+}
 
-    // 若尚未學習地面色，友善提示（不強制）
-    if (!groundColorLearned) {
-        const el = document.getElementById('detection-status');
-        if (el) {
-            el.style.color = '#ffea00';
-            el.textContent = '⚠️ 尚未學習地面色（點「調整終點線」→「🎨 學習地面色」可提升精準度）';
-        }
+// ROI 框：畫面中央 60% 寬 × 50% 高
+function getROIRect(w,h){
+  const rw=Math.floor(w*0.62), rh=Math.floor(h*0.56);
+  return {x:Math.floor((w-rw)/2), y:Math.floor((h-rh)/2), w:rw, h:rh};
+}
+
+function drawROI(canvas){
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width, h=canvas.height;
+  const {x,y,w:rw,h:rh}=getROIRect(w,h);
+  ctx.clearRect(0,0,w,h);
+  // 暗化遮罩
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.fillRect(0,0,w,h);
+  ctx.clearRect(x,y,rw,rh);
+  // 黃色邊框
+  ctx.strokeStyle='#ffea00';
+  ctx.lineWidth=2.5;
+  ctx.setLineDash([8,5]);
+  ctx.strokeRect(x,y,rw,rh);
+  ctx.setLineDash([]);
+  // 角標
+  const cl=12;
+  ctx.strokeStyle='#fff';
+  ctx.lineWidth=3;
+  [[x,y],[x+rw,y],[x,y+rh],[x+rw,y+rh]].forEach(([cx,cy],i)=>{
+    ctx.beginPath();
+    ctx.moveTo(cx+(i%2===0?0:-(cl)),cy);
+    ctx.lineTo(cx+(i%2===0?cl:0),cy);
+    ctx.moveTo(cx,cy+(i<2?0:-(cl)));
+    ctx.lineTo(cx,cy+(i<2?cl:0));
+    ctx.stroke();
+  });
+  // 標籤
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.fillRect(x,y+rh+2,rw,18);
+  ctx.fillStyle='#ffea00';
+  ctx.font='bold 11px sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('號碼衣對準此框',x+rw/2,y+rh+14);
+  ctx.textAlign='left';
+}
+
+// ★ 修改2：點擊對焦
+async function tapFocus(e, video){
+  const box=document.getElementById('scan-cam-box');
+  const rect=box.getBoundingClientRect();
+  const px=(e.clientX-rect.left)/rect.width;
+  const py=(e.clientY-rect.top)/rect.height;
+  // 對焦圓圈動畫
+  const ring=document.getElementById('focus-ring');
+  ring.style.left=`${(px*100).toFixed(1)}%`;
+  ring.style.top=`${(py*100).toFixed(1)}%`;
+  ring.style.display='block';
+  ring.style.animation='none';
+  requestAnimationFrame(()=>{
+    ring.style.animation='focusPulse 0.5s ease forwards';
+  });
+  setTimeout(()=>ring.style.display='none',800);
+  // 嘗試點觸對焦（部分瀏覽器支援）
+  if(scannerStream){
+    const track=scannerStream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.();
+    if(caps?.focusMode?.includes('manual')){
+      try{
+        await track.applyConstraints({advanced:[{
+          focusMode:'manual',
+          pointsOfInterest:[{x:px,y:py}]
+        }]});
+        setTimeout(async()=>{
+          try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch{}
+        },2000);
+      }catch{}
     }
+  }
 }
 
-function resetFinishLine() {
-    finishLine = { x1: 0.5, y1: 0, x2: 0.5, y2: 1 };
-    tempLine = null;
-    drawFinishLine();
+// ★ 修改1：擷取並分析 — 使用 ROI 區域做顏色分析
+function captureFrame(){
+  const video=document.getElementById('scan-video');
+  const capCanvas=document.getElementById('cap-canvas');
+  const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
+
+  const vw=video.videoWidth||640, vh=video.videoHeight||480;
+  capCanvas.width=vw; capCanvas.height=vh;
+  capCtx.drawImage(video,0,0,vw,vh);
+
+  // 在擷取圖上畫黃色 ROI 框供預覽
+  const roi=getROIRect(vw,vh);
+  capCtx.strokeStyle='#ffea00';
+  capCtx.lineWidth=3;
+  capCtx.strokeRect(roi.x,roi.y,roi.w,roi.h);
+
+  // 顯示預覽
+  const capBox=document.getElementById('cap-preview-box');
+  capBox.style.display='flex';
+
+  // ════ 顏色分析 ════
+  // 在 ROI 內取樣，用 k-means(2) 分出「底色」和「字色（最暗色）」
+  const roiData=capCtx.getImageData(roi.x,roi.y,roi.w,roi.h).data;
+  const samples=[];
+  const step=4; // 每 step 像素取一個
+  for(let i=0;i<roiData.length;i+=4*step){
+    const r=roiData[i],g=roiData[i+1],b=roiData[i+2];
+    // 排除接近純黑/純白的邊緣雜訊
+    const bright=(r*299+g*587+b*114)/1000;
+    if(bright<8||bright>247) continue;
+    samples.push({r,g,b});
+  }
+
+  if(samples.length<20){
+    alert('無法取得足夠色彩資訊，請確認號碼衣已對準框內並光線充足！');
+    return;
+  }
+
+  // k-means(2)：一群是底色（較多），一群是字色（較少、對比強）
+  const clusters=kMeans2(samples);
+  // 亮度較高的是底色
+  const bright0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
+  const bright1=(clusters[1]?.r*299+clusters[1]?.g*587+clusters[1]?.b*114)/1000||0;
+  const bibC  = bright0>=bright1 ? clusters[0] : clusters[1];
+  const txtC  = bright0< bright1 ? clusters[0] : (clusters[1]||clusters[0]);
+
+  const bibHex=rgbHex(Math.round(bibC.r),Math.round(bibC.g),Math.round(bibC.b));
+  const txtHex=rgbHex(Math.round(txtC.r),Math.round(txtC.g),Math.round(txtC.b));
+
+  pendingCapture={bibHex,txtHex};
+
+  // 更新 UI
+  document.getElementById('bib-chip').style.background=bibHex;
+  document.getElementById('txt-chip').style.background=txtHex;
+  document.getElementById('bib-chip-label').textContent=bibHex;
+  document.getElementById('txt-chip-label').textContent=txtHex;
+  document.getElementById('color-result-panel').classList.add('show');
+  document.getElementById('scan-saved-msg').style.display='none';
+  document.getElementById('scan-bib-input').value='';
+  document.getElementById('scan-bib-input').focus();
 }
 
-// ================================================================
-// 模組三：實時越線偵測（三層防護，避免地面道次號碼誤判）
-// ================================================================
+function saveScannedBib(){
+  const num=document.getElementById('scan-bib-input').value.trim();
+  if(!num){alert('請輸入號碼衣號碼！');return}
+  if(!pendingCapture){alert('請先點「📸 擷取分析」！');return}
+  saveBibProfile(num, pendingCapture.bibHex, pendingCapture.txtHex);
+  const msg=document.getElementById('scan-saved-msg');
+  msg.textContent=`✅ #${num} 已儲存（底色 ${pendingCapture.bibHex}）`;
+  msg.style.display='block';
+  document.getElementById('scan-bib-input').value='';
+  pendingCapture=null;
+  document.getElementById('color-result-panel').classList.remove('show');
+  document.getElementById('cap-preview-box').style.display='none';
+}
 
-/*
- * ★ 防誤判三層架構 ★
- *
- * 【層1 — 垂直分帶過濾】
- *   跑道地面的道次號碼固定出現在畫面下半部（地面視角）。
- *   系統將攝影畫面垂直分成三帶：
- *     - 上帶 (0%~35%)  : 天空/背景，幾乎無效
- *     - 中帶 (35%~75%) : 人體軀幹高度 ← 有效偵測區（號碼衣在此）
- *     - 下帶 (75%~100%): 跑道地面 ← 忽略區（道次號碼在此）
- *   越線事件只計算中帶的像素變化量，下帶的變化完全忽略。
- *
- * 【層2 — 動態物體驗證（垂直移動特徵）】
- *   地面道次號碼：靜止不動，前後 frame 差異為 0（除光線變化外）。
- *   跑步學生：在畫面中有橫向位移，且身體有垂直晃動。
- *   系統比較靜態背景模型（baselineFrame）與當前 frame 的差值，
- *   僅當變化量集中在中帶且超出靜態閾值時，才認定為「有人移動」。
- *
- * 【層3 — 號碼衣顏色驗證（色彩比對）】
- *   越線觸發後，擷取終點線附近中帶區域的主色，
- *   與設定階段學習的 visionProfiles 做色彩距離比對。
- *   若比對到已知號碼衣顏色 → 信心值提升，直接推薦對應學生。
- *   若偵測到的顏色接近「跑道紅棕色+白色」（地面道次特徵）→ 否決觸發。
- */
+function saveBibProfile(num,bibHex,txtHex){
+  const idx=visionProfiles.findIndex(p=>p.number===num);
+  if(idx>-1){visionProfiles[idx]={number:num,bibColor:bibHex,textColor:txtHex}}
+  else{
+    visionProfiles.push({number:num,bibColor:bibHex,textColor:txtHex});
+    const ta=document.getElementById('ta-names');
+    const lines=ta.value?ta.value.split('\n'):[];
+    const exists=lines.some(l=>l.trim().startsWith(num+' ')||l.trim()===num);
+    if(!exists) ta.value=(ta.value?ta.value+'\n':'')+`${num} 學生${num}號`;
+  }
+  renderProfiles();
+}
 
-// 背景基線（靜止時的畫面，用來過濾地面靜態號碼）
-let baselineFrame = null;
-let baselineCollectCount = 0;
-const BASELINE_FRAMES = 30; // 開始後收集 30 幀建立背景
-let baselineReady = false;
+function renderProfiles(){
+  const c=document.getElementById('profile-list');
+  c.innerHTML='';
+  visionProfiles.forEach(p=>{
+    const b=document.createElement('div');
+    b.className='pbadge';
+    b.innerHTML=`<span class="pnum">#${p.number}</span>
+      <span class="pcc">
+        <span style="background:${p.bibColor}" title="底色 ${p.bibColor}"></span>
+        <span style="background:${p.textColor}" title="字色 ${p.textColor}"></span>
+      </span>
+      <button class="pdel" onclick="deleteBibProfile('${p.number}')" title="刪除">✕</button>`;
+    c.appendChild(b);
+  });
+}
 
-// ★ 動態地面顏色模型（由老師在設定終點線時學習，不再寫死）
-// 每個 cluster = { r, g, b, tolerance }
-let groundColorClusters = [];   // 學習後填入，空陣列 = 尚未學習（退回備用邏輯）
-let groundColorLearned = false;
+function deleteBibProfile(num){
+  visionProfiles=visionProfiles.filter(p=>p.number!==num);
+  renderProfiles();
+}
 
-// 從攝影機畫面下帶自動取樣跑道及道次字顏色
-function learnGroundColors() {
-    const vCanvas = document.getElementById('vision-canvas');
-    const ctx = vCanvas.getContext('2d', { willReadFrequently: true });
-    const w = vCanvas.width, h = vCanvas.height;
-    if (!w || !h) { alert('請等待攝影機畫面載入後再學習！'); return; }
+function closeScanner(){
+  if(scannerStream) scannerStream.getTracks().forEach(t=>t.stop());
+  document.getElementById('scanner-modal').classList.remove('active');
+}
 
-    // 取樣範圍：畫面最下 25%（地面帶），沿整個寬度均勻取 200 個點
-    const sampleY_start = Math.floor(h * 0.75);
-    const sampleY_end   = Math.floor(h * 0.98);
-    const N = 200;
-    const samples = [];
+// ════════════════════════════════════════════════
+// 進入測驗
+// ════════════════════════════════════════════════
+async function startSetup(){
+  const dist=parseInt(document.getElementById('sel-dist').value);
+  const track=parseInt(document.getElementById('sel-track').value);
+  targetLaps=Math.ceil(dist/track);
 
-    for (let i = 0; i < N; i++) {
-        const x = Math.floor(Math.random() * w);
-        const y = sampleY_start + Math.floor(Math.random() * (sampleY_end - sampleY_start));
-        try {
-            const d = ctx.getImageData(x, y, 1, 1).data;
-            samples.push({ r: d[0], g: d[1], b: d[2] });
-        } catch {}
+  const raw=document.getElementById('ta-names').value.trim().split('\n');
+  students=[];
+  raw.forEach((line,i)=>{
+    if(!line.trim()) return;
+    const m=line.trim().match(/^(\d+)?\s*(.*)$/);
+    const bib=m[1]||'-';
+    const name=(m[2]||`學生${i+1}`).trim()||`學生${i+1}`;
+    students.push({id:students.length,bib,name,
+      currentLap:0,lapTimes:[],splitTimes:[],
+      lastLapMs:0,lastLapDiff:0,timeoutId:null});
+  });
+  if(!students.length){alert('請至少輸入一位學生！');return}
+
+  // 停止預覽流
+  if(previewStream) previewStream.getTracks().forEach(t=>t.stop());
+
+  document.getElementById('setup-section').style.display='none';
+  document.getElementById('test-section').style.display='flex';
+  renderGrid();
+  renderAIQueue();
+  await startMainCam();
+}
+
+// ════════════════════════════════════════════════
+// 主相機 — ★ 修改2：自動對焦
+// ════════════════════════════════════════════════
+async function startMainCam(){
+  const deviceId=document.getElementById('sel-cam').value;
+  const video=document.getElementById('viewfinder');
+  if(deviceId==='none') return;
+  try{
+    mainStream=await navigator.mediaDevices.getUserMedia({video:{
+      deviceId:{exact:deviceId},
+      width:{ideal:1280},height:{ideal:720},
+      focusMode:'continuous'   // ★ 持續自動對焦
+    }});
+    video.srcObject=mainStream;
+    video.onloadedmetadata=()=>{
+      video.play();
+      setupFLCanvas();
+      startVisionLoop();
+    };
+    // 嘗試設定連續對焦
+    const track=mainStream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.();
+    if(caps?.focusMode?.includes('continuous')){
+      try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch{}
     }
-    if (!samples.length) { alert('取樣失敗，請確認攝影機已啟動！'); return; }
+  }catch(err){ console.error('主相機載入失敗',err); }
+}
 
-    // 用 k-means (k=2) 把取樣色分成兩群：跑道主色 & 道次字色
-    const clusters = kMeans2(samples);
+// ════════════════════════════════════════════════
+// 終點線繪製
+// ════════════════════════════════════════════════
+function setupFLCanvas(){
+  const cam=document.getElementById('cam-section');
+  const c=document.getElementById('fl-canvas');
+  c.width=cam.offsetWidth; c.height=cam.offsetHeight;
+  drawFL();
+  setupLineEvents();
+}
 
-    // 每群加上容許誤差（取群內標準差 × 1.8，最小 30，最大 80）
-    groundColorClusters = clusters.map(c => ({
-        r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b),
-        tolerance: Math.min(80, Math.max(30, Math.round(c.stddev * 1.8)))
+function drawFL(draft){
+  const c=document.getElementById('fl-canvas');
+  const ctx=c.getContext('2d');
+  const w=c.width,h=c.height;
+  ctx.clearRect(0,0,w,h);
+  const line=draft||FL;
+  const x1=line.x1*w,y1=line.y1*h,x2=line.x2*w,y2=line.y2*h;
+
+  ctx.save();
+  if(lineEditMode){
+    ctx.strokeStyle='#5c35ff';ctx.lineWidth=3;ctx.setLineDash([8,6]);
+  }else{
+    ctx.strokeStyle='rgba(255,30,30,0.85)';ctx.lineWidth=3;ctx.setLineDash([]);
+    ctx.shadowColor='#ff1744';ctx.shadowBlur=8;
+  }
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.restore();
+
+  // 有效偵測帶（中帶 35%~75%）
+  if(!lineEditMode){
+    const bt=h*0.35,bb=h*0.75;
+    ctx.save();
+    ctx.strokeStyle='rgba(0,212,255,0.35)';ctx.lineWidth=1;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(0,bt);ctx.lineTo(w,bt);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,bb);ctx.lineTo(w,bb);ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle='rgba(0,230,118,0.06)';ctx.fillRect(0,bt,w,bb-bt);
+    ctx.fillStyle='rgba(255,100,30,0.06)';ctx.fillRect(0,bb,w,h-bb);
+    ctx.restore();
+    ctx.save();
+    ctx.font='bold 9px sans-serif';
+    ctx.fillStyle='rgba(0,212,255,0.75)';ctx.fillText('▶ 有效偵測區',3,bt-3);
+    ctx.fillStyle='rgba(255,130,50,0.75)';ctx.fillText('▶ 地面忽略區',3,bb+10);
+    ctx.restore();
+  }
+
+  // 終點線標籤
+  const mx=(x1+x2)/2,my=(y1+y2)/2-8;
+  ctx.save();
+  ctx.font='bold 10px sans-serif';
+  ctx.fillStyle=lineEditMode?'#5c35ff':'rgba(255,30,30,0.9)';
+  ctx.fillText('⬛ 終點線',mx-28,my);
+  ctx.restore();
+}
+
+function setupLineEvents(){
+  const c=document.getElementById('fl-canvas');
+  c.addEventListener('mousedown',e=>{if(!lineEditMode)return;lineDrawing=true;lineStart=cpos(e,c)});
+  c.addEventListener('mousemove',e=>{
+    if(!lineEditMode||!lineDrawing)return;
+    const p=cpos(e,c);
+    tempFL={x1:lineStart.x,y1:lineStart.y,x2:p.x,y2:p.y};
+    drawFL(tempFL);
+  });
+  c.addEventListener('mouseup',e=>{
+    if(!lineEditMode||!lineDrawing)return;
+    lineDrawing=false;
+    if(tempFL){FL={...tempFL};tempFL=null;}
+    // ★ 修改4：畫完線立即學習跑道色
+    autoLearnGround();
+    drawFL();
+  });
+  c.addEventListener('touchstart',e=>{e.preventDefault();if(!lineEditMode)return;lineDrawing=true;lineStart=cpos(e,c)},{passive:false});
+  c.addEventListener('touchmove',e=>{
+    e.preventDefault();if(!lineEditMode||!lineDrawing)return;
+    const p=cpos(e,c);
+    tempFL={x1:lineStart.x,y1:lineStart.y,x2:p.x,y2:p.y};
+    drawFL(tempFL);
+  },{passive:false});
+  c.addEventListener('touchend',e=>{
+    if(!lineEditMode||!lineDrawing)return;
+    lineDrawing=false;
+    if(tempFL){FL={...tempFL};tempFL=null;}
+    autoLearnGround();
+    drawFL();
+  });
+}
+
+function cpos(e,canvas){
+  const r=canvas.getBoundingClientRect();
+  const s=e.touches?e.touches[0]:e;
+  return{x:(s.clientX-r.left)/r.width,y:(s.clientY-r.top)/r.height};
+}
+
+function toggleLineEdit(){
+  lineEditMode=!lineEditMode;
+  const overlay=document.getElementById('line-edit-overlay');
+  const c=document.getElementById('fl-canvas');
+  const btn=document.getElementById('cbtn-line');
+  if(lineEditMode){
+    overlay.classList.add('active');
+    c.classList.add('editable');
+    btn.style.background='#ff6b35';
+    // 刷新 vis-canvas 供學習
+    const video=document.getElementById('viewfinder');
+    const vc=document.getElementById('vis-canvas');
+    if(video.videoWidth){
+      vc.width=video.videoWidth;vc.height=video.videoHeight;
+      vc.getContext('2d').drawImage(video,0,0);
+    }
+  }else{
+    overlay.classList.remove('active');
+    c.classList.remove('editable');
+    btn.style.background='#5c35ff';
+  }
+  drawFL();
+}
+
+function saveFinishLine(){
+  if(tempFL){FL={...tempFL};tempFL=null;}
+  autoLearnGround(); // 確保最新畫面學習
+  lineEditMode=false;
+  document.getElementById('line-edit-overlay').classList.remove('active');
+  document.getElementById('fl-canvas').classList.remove('editable');
+  document.getElementById('cbtn-line').style.background='#5c35ff';
+  drawFL();
+}
+
+function resetFinishLine(){
+  FL={x1:0.5,y1:0,x2:0.5,y2:1};tempFL=null;
+  groundLearned=false;groundClusters=[];
+  document.getElementById('ground-strip').classList.remove('show');
+  drawFL();
+}
+
+// ════════════════════════════════════════════════
+// ★ 修改4：畫出終點線後自動學習跑道色
+// 終點線本身就在地面跑道上 → 沿線取樣即為跑道地面顏色
+// ════════════════════════════════════════════════
+function autoLearnGround(){
+  const video=document.getElementById('viewfinder');
+  const vc=document.getElementById('vis-canvas');
+  if(!video.videoWidth) return;
+  // 確保 vis-canvas 有最新畫面
+  if(vc.width!==video.videoWidth){vc.width=video.videoWidth;vc.height=video.videoHeight;}
+  const vCtx=vc.getContext('2d',{willReadFrequently:true});
+  vCtx.drawImage(video,0,0);
+
+  const w=vc.width,h=vc.height;
+  const samples=[];
+  const line=FL;
+  const N=80; // 沿終點線取 80 個點
+
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const rx=(line.x1+(line.x2-line.x1)*t)*w;
+    const ry=(line.y1+(line.y2-line.y1)*t)*h;
+    // 在線的周圍取 3×3 區塊，增加樣本多樣性
+    for(let dx=-3;dx<=3;dx+=3){
+      for(let dy=-3;dy<=3;dy+=3){
+        const px=Math.max(0,Math.min(w-1,Math.floor(rx+dx)));
+        const py=Math.max(0,Math.min(h-1,Math.floor(ry+dy)));
+        try{
+          const d=vCtx.getImageData(px,py,1,1).data;
+          const bright=(d[0]*299+d[1]*587+d[2]*114)/1000;
+          if(bright>5&&bright<250) samples.push({r:d[0],g:d[1],b:d[2]});
+        }catch{}
+      }
+    }
+  }
+
+  if(samples.length<10) return; // 取樣不足則略過
+
+  // 沿終點線的色彩通常有兩群：跑道色 + 白色線條（若有）
+  const clusters=kMeans2(samples);
+  groundClusters=clusters
+    .filter(c=>c&&c.r!==undefined)
+    .map(c=>({
+      r:Math.round(c.r),g:Math.round(c.g),b:Math.round(c.b),
+      tol:Math.min(75,Math.max(28,Math.round((c.stddev||20)*1.8)))
     }));
-    groundColorLearned = true;
+  groundLearned=groundClusters.length>0;
 
-    // 更新 UI 預覽
-    const preview = document.getElementById('ground-color-preview');
-    preview.style.display = 'flex';
-    const chip1 = document.getElementById('gcp-track-chip');
-    const chip2 = document.getElementById('gcp-line-chip');
-    const samplesEl = document.getElementById('gcp-samples');
-    chip1.style.background = `rgb(${groundColorClusters[0].r},${groundColorClusters[0].g},${groundColorClusters[0].b})`;
-    chip2.style.background = groundColorClusters[1]
-        ? `rgb(${groundColorClusters[1].r},${groundColorClusters[1].g},${groundColorClusters[1].b})`
-        : '#333';
-    samplesEl.textContent = `(${N} 點取樣)`;
-    document.getElementById('btn-learn-ground').textContent = '✅ 已學習';
-    document.getElementById('btn-learn-ground').style.background = '#00e676';
+  // 更新預覽
+  const strip=document.getElementById('ground-strip');
+  if(groundLearned){
+    strip.classList.add('show');
+    const c0=groundClusters[0],c1=groundClusters[1];
+    document.getElementById('gs-chip1').style.background=
+      `rgb(${c0.r},${c0.g},${c0.b})`;
+    document.getElementById('gs-chip2').style.background=
+      c1?`rgb(${c1.r},${c1.g},${c1.b})`:'transparent';
+    document.getElementById('gs-info').textContent=
+      `(${samples.length}點取樣，公差±${groundClusters.map(c=>c.tol).join('/')})`;
+  }
 }
 
-// 簡易 k-means k=2，輸入 [{r,g,b}]，回傳兩個中心 + 標準差
-function kMeans2(samples) {
-    if (samples.length < 2) return [{ r:128, g:128, b:128, stddev:30 }];
-    // 初始化：選亮度最低和最高的各一個
-    const brightness = s => (s.r*299 + s.g*587 + s.b*114) / 1000;
-    const sorted = [...samples].sort((a,b) => brightness(a) - brightness(b));
-    let c = [
-        { ...sorted[0] },
-        { ...sorted[sorted.length - 1] }
-    ];
-    for (let iter = 0; iter < 10; iter++) {
-        const groups = [[], []];
-        for (const s of samples) {
-            const d0 = colorDistance(s.r, s.g, s.b, c[0].r, c[0].g, c[0].b);
-            const d1 = colorDistance(s.r, s.g, s.b, c[1].r, c[1].g, c[1].b);
-            groups[d0 <= d1 ? 0 : 1].push(s);
-        }
-        for (let k = 0; k < 2; k++) {
-            if (!groups[k].length) continue;
-            const avgR = groups[k].reduce((s,x)=>s+x.r,0)/groups[k].length;
-            const avgG = groups[k].reduce((s,x)=>s+x.g,0)/groups[k].length;
-            const avgB = groups[k].reduce((s,x)=>s+x.b,0)/groups[k].length;
-            c[k] = { r: avgR, g: avgG, b: avgB };
-        }
-        // 計算群內標準差（感知亮度）
-        c = c.map((center, k) => {
-            if (!groups[k] || !groups[k].length) return { ...center, stddev: 30 };
-            const dists = groups[k].map(s => colorDistance(s.r,s.g,s.b,center.r,center.g,center.b));
-            const mean = dists.reduce((a,b)=>a+b,0)/dists.length;
-            const variance = dists.reduce((a,d)=>a+(d-mean)**2,0)/dists.length;
-            return { ...center, stddev: Math.sqrt(variance) };
-        });
+// ════════════════════════════════════════════════
+// 地面色判斷（動態）
+// ════════════════════════════════════════════════
+function isGroundColor(r,g,b){
+  if(!groundLearned||!groundClusters.length) return false;
+  for(const c of groundClusters){
+    if(colorDist(r,g,b,c.r,c.g,c.b)<=c.tol) return true;
+  }
+  return false;
+}
+
+// ════════════════════════════════════════════════
+// 越線偵測主迴圈
+// ════════════════════════════════════════════════
+function startVisionLoop(){
+  const video=document.getElementById('viewfinder');
+  const vc=document.getElementById('vis-canvas');
+  const ctx=vc.getContext('2d',{willReadFrequently:true});
+
+  function frame(){
+    if(video.paused||video.ended){visRAF=requestAnimationFrame(frame);return}
+    if(vc.width!==video.videoWidth){
+      vc.width=video.videoWidth;vc.height=video.videoHeight;
+      baselineFrame=null;baselineReady=false;baselineCnt=0;
     }
-    return c;
-}
+    ctx.drawImage(video,0,0);
 
-// 動態版：判斷像素是否屬於地面顏色（使用學習到的 cluster）
-function isGroundTrackColor(r, g, b) {
-    if (!groundColorLearned || !groundColorClusters.length) {
-        // 尚未學習 → 退回保守備用邏輯（只排除極端情況）
-        return false;
+    if(!isRunning){
+      baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);
+      visRAF=requestAnimationFrame(frame);return;
     }
-    for (const c of groundColorClusters) {
-        if (colorDistance(r, g, b, c.r, c.g, c.b) <= c.tolerance) return true;
-    }
-    return false;
-}
-
-// 計算兩顏色的感知距離
-function colorDistance(r1, g1, b1, r2, g2, b2) {
-    const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
-    // 加權歐氏距離（感知修正）
-    const rmean = (r1 + r2) / 2;
-    return Math.sqrt((2 + rmean/256)*dr*dr + 4*dg*dg + (2 + (255-rmean)/256)*db*db);
-}
-
-function startVisionLoop() {
-    const video = document.getElementById('viewfinder');
-    const canvas = document.getElementById('vision-canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    function processFrame() {
-        if (video.paused || video.ended) {
-            visionAnimationId = requestAnimationFrame(processFrame);
-            return;
-        }
-        if (canvas.width !== video.videoWidth) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            baselineFrame = null;
-            baselineCollectCount = 0;
-            baselineReady = false;
-        }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // 建立背景基線（計時開始後才需要偵測）
-        if (!isRunning) {
-            // 持續更新基線，直到計時開始
-            baselineFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            visionAnimationId = requestAnimationFrame(processFrame);
-            return;
-        }
-
-        // 計時開始後，先收集幾幀穩定基線
-        if (!baselineReady) {
-            if (baselineCollectCount < BASELINE_FRAMES) {
-                if (!baselineFrame) baselineFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                baselineCollectCount++;
-            } else {
-                baselineReady = true;
-            }
-            visionAnimationId = requestAnimationFrame(processFrame);
-            return;
-        }
-
-        // === 層1：只取中帶 (35%~75%) 的終點線像素 ===
-        const linePixels = sampleLinePixels(ctx, canvas.width, canvas.height);
-
-        if (lastLinePixels && linePixels.length === lastLinePixels.length) {
-            let motionDiff = 0;
-            let groundColorCount = 0;
-            const sampleCount = linePixels.length / 4;
-
-            for (let i = 0; i < linePixels.length; i += 4) {
-                const r = linePixels[i], g = linePixels[i+1], b = linePixels[i+2];
-                motionDiff += Math.abs(r - lastLinePixels[i]);
-                motionDiff += Math.abs(g - lastLinePixels[i+1]);
-                motionDiff += Math.abs(b - lastLinePixels[i+2]);
-
-                // 統計地面顏色占比（層3 前置）
-                if (isGroundTrackColor(r, g, b)) groundColorCount++;
-            }
-            const avgMotion = motionDiff / sampleCount;
-
-            // === 層2：背景差分驗證（排除靜態地面數字的微小光線變化）===
-            const bgDiff = computeBaselineDiffOnLine(canvas.width, canvas.height);
-
-            // 動態閾值：必須顯著超過背景雜訊 2 倍以上
-            const dynamicThreshold = Math.max(45, bgDiff * 2.2);
-
-            // === 層3：地面顏色占比過高時否決 ===
-            // 若終點線上超過 60% 的像素都是跑道地面色 → 觸發來源是地面，否決
-            const groundRatio = groundColorCount / sampleCount;
-
-            // 更新狀態顯示
-            const statusEl = document.getElementById('detection-status');
-            if (statusEl) {
-                const gPct = Math.round(groundRatio * 100);
-                const motion = Math.round(avgMotion);
-                const threshold = Math.round(dynamicThreshold);
-                const rejected = groundRatio >= 0.6;
-                const learnedTag = groundColorLearned ? '' : ' ⚠️未學習地面色';
-                statusEl.style.color = crossingCooldown ? '#ff9800' : rejected ? '#ff5252' : motion > threshold ? '#00e676' : '#7a9ab5';
-                statusEl.textContent = rejected
-                    ? `⛔ 地面色 ${gPct}% 過高，已忽略${learnedTag}`
-                    : `動態:${motion} 閾:${threshold} 地面:${gPct}%${crossingCooldown ? ' 冷卻中' : ''}${learnedTag}`;
-            }
-
-            if (avgMotion > dynamicThreshold && groundRatio < 0.6 && !crossingCooldown) {
-                handleLineCrossing(linePixels);
-            }
-        }
-
-        lastLinePixels = new Uint8ClampedArray(linePixels);
-        visionAnimationId = requestAnimationFrame(processFrame);
-    }
-    visionAnimationId = requestAnimationFrame(processFrame);
-}
-
-// 計算背景基線在終點線上的雜訊量（光線、陰影等自然波動）
-function computeBaselineDiffOnLine(w, h) {
-    if (!baselineFrame) return 0;
-    const N = 20;
-    let diff = 0;
-    const canvas = document.getElementById('vision-canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    // 只取中帶
-    const bandTop = Math.floor(h * 0.35);
-    const bandBottom = Math.floor(h * 0.75);
-
-    for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const x = Math.floor((finishLine.x1 + (finishLine.x2 - finishLine.x1) * t) * w);
-        const y = Math.floor((finishLine.y1 + (finishLine.y2 - finishLine.y1) * t) * h);
-        const py = Math.max(bandTop, Math.min(bandBottom - 1, y));
-        const px = Math.max(0, Math.min(w - 1, x));
-
-        try {
-            const cur = ctx.getImageData(px, py, 1, 1).data;
-            const baseIdx = (py * w + px) * 4;
-            diff += Math.abs(cur[0] - baselineFrame.data[baseIdx]);
-            diff += Math.abs(cur[1] - baselineFrame.data[baseIdx + 1]);
-            diff += Math.abs(cur[2] - baselineFrame.data[baseIdx + 2]);
-        } catch { /* ignore */ }
-    }
-    return diff / (N + 1);
-}
-
-// 沿終點線取樣，僅取中帶（35%~75%），忽略地面帶
-function sampleLinePixels(ctx, w, h) {
-    const N = 20;
-    const pixels = [];
-    const bandTop    = h * 0.35;   // 中帶上緣
-    const bandBottom = h * 0.75;   // 中帶下緣（75% 以下 = 地面，忽略）
-
-    for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const rawX = (finishLine.x1 + (finishLine.x2 - finishLine.x1) * t) * w;
-        const rawY = (finishLine.y1 + (finishLine.y2 - finishLine.y1) * t) * h;
-
-        // ★ 只處理中帶範圍內的點，超出範圍填 0（不計入差分）
-        if (rawY < bandTop || rawY > bandBottom) {
-            pixels.push(0, 0, 0, 0); // alpha=0 標記為「跳過」
-            continue;
-        }
-        const px = Math.max(0, Math.min(w - 1, Math.floor(rawX)));
-        const py = Math.max(0, Math.min(h - 1, Math.floor(rawY)));
-        try {
-            const d = ctx.getImageData(px, py, 1, 1).data;
-            pixels.push(d[0], d[1], d[2], d[3]);
-        } catch { pixels.push(0, 0, 0, 255); }
-    }
-    return pixels;
-}
-
-// 觸發越線後，從終點線附近擷取主色做號碼衣比對
-function extractCrossingZoneColor(canvas, ctx) {
-    const w = canvas.width, h = canvas.height;
-    const bandTop    = Math.floor(h * 0.35);
-    const bandBottom = Math.floor(h * 0.70);
-    // 終點線中點附近取 30×80 像素區塊
-    const cx = Math.floor(((finishLine.x1 + finishLine.x2) / 2) * w);
-    const bx = Math.max(0, cx - 15);
-    const by = bandTop;
-    const bw = Math.min(30, w - bx);
-    const bh = Math.min(80, bandBottom - bandTop);
-
-    try {
-        const data = ctx.getImageData(bx, by, bw, bh).data;
-        let rS = 0, gS = 0, bS = 0, cnt = 0;
-        for (let i = 0; i < data.length; i += 4) {
-            // 排除地面色再平均
-            if (!isGroundTrackColor(data[i], data[i+1], data[i+2])) {
-                rS += data[i]; gS += data[i+1]; bS += data[i+2]; cnt++;
-            }
-        }
-        if (cnt > 0) return { r: Math.round(rS/cnt), g: Math.round(gS/cnt), b: Math.round(bS/cnt) };
-    } catch {}
-    return null;
-}
-
-function handleLineCrossing(linePixels) {
-    // 閃光效果
-    const flCanvas = document.getElementById('finish-line-canvas');
-    const fCtx = flCanvas.getContext('2d');
-    const w = flCanvas.width, h = flCanvas.height;
-    const x1 = finishLine.x1 * w, y1 = finishLine.y1 * h;
-    const x2 = finishLine.x2 * w, y2 = finishLine.y2 * h;
-    fCtx.save();
-    fCtx.strokeStyle = '#00FF00';
-    fCtx.lineWidth = 6;
-    fCtx.shadowColor = '#00FF00';
-    fCtx.shadowBlur = 20;
-    fCtx.beginPath(); fCtx.moveTo(x1, y1); fCtx.lineTo(x2, y2); fCtx.stroke();
-    fCtx.restore();
-    setTimeout(() => drawFinishLine(), 300);
-
-    crossingCooldown = true;
-    setTimeout(() => crossingCooldown = false, 1800);
-
-    // 擷取越線區顏色供號碼衣比對
-    const vCanvas = document.getElementById('vision-canvas');
-    const vCtx = vCanvas.getContext('2d', { willReadFrequently: true });
-    const zoneColor = extractCrossingZoneColor(vCanvas, vCtx);
-
-    triggerAICrossing(zoneColor);
-}
-
-// ================================================================
-// 模組四：AI 辨識 + 人機協作（含號碼衣顏色比對）
-// ================================================================
-
-// 真實越線觸發（由視覺引擎呼叫，帶入越線區顏色）
-function triggerAICrossing(zoneColor) {
-    if (!isRunning) return;
-    const active = students.filter(s => s.currentLap < targetLaps);
-    if (!active.length) return;
-    pushAIQueueItem(active, zoneColor);
-}
-
-// 模擬越線（手動測試按鈕用）
-function simulateAICrossing() {
-    if (!isRunning) return;
-    const active = students.filter(s => s.currentLap < targetLaps);
-    if (!active.length) return;
-    pushAIQueueItem(active, null);
-}
-
-function pushAIQueueItem(active, zoneColor) {
-    let detectedStudent = null;
-    let detectedBib = null;
-    let confidence = 0;
-    let matchReason = '';
-
-    // ★ 顏色比對：用越線區主色與 visionProfiles 比對
-    if (zoneColor && visionProfiles.length > 0) {
-        let bestDist = Infinity, bestProfile = null;
-        for (const p of visionProfiles) {
-            const pr = parseInt(p.bibColor.slice(1,3),16);
-            const pg = parseInt(p.bibColor.slice(3,5),16);
-            const pb = parseInt(p.bibColor.slice(5,7),16);
-            const dist = colorDistance(zoneColor.r, zoneColor.g, zoneColor.b, pr, pg, pb);
-            if (dist < bestDist) { bestDist = dist; bestProfile = p; }
-        }
-        if (bestProfile && bestDist < 80) {
-            const student = active.find(s => s.bib === bestProfile.number);
-            if (student) {
-                detectedStudent = student;
-                detectedBib = student.bib;
-                confidence = Math.round(Math.max(60, 100 - bestDist * 0.6));
-                matchReason = '色彩比對';
-            }
-        }
+    if(!baselineReady){
+      if(baselineCnt<BASELINE_N){if(!baselineFrame)baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);baselineCnt++;}
+      else baselineReady=true;
+      visRAF=requestAnimationFrame(frame);return;
     }
 
-    // 次選：有 profile 的學生中隨機
-    if (!detectedStudent && visionProfiles.length > 0) {
-        const profiledStudents = active.filter(s => visionProfiles.find(p => p.number === s.bib));
-        if (profiledStudents.length > 0) {
-            detectedStudent = profiledStudents[Math.floor(Math.random() * profiledStudents.length)];
-            detectedBib = detectedStudent.bib;
-            confidence = 45 + Math.floor(Math.random() * 20);
-            matchReason = '特徵推測';
-        }
-    }
+    const pixels=sampleLine(ctx,vc.width,vc.height);
+    if(lastPixels&&pixels.length===lastPixels.length){
+      let motion=0,groundCnt=0;
+      const cnt=pixels.length/4;
+      for(let i=0;i<pixels.length;i+=4){
+        const r=pixels[i],g=pixels[i+1],b=pixels[i+2],a=pixels[i+3];
+        if(a===0) continue; // 跳過帶外點
+        motion+=Math.abs(r-lastPixels[i])+Math.abs(g-lastPixels[i+1])+Math.abs(b-lastPixels[i+2]);
+        if(isGroundColor(r,g,b)) groundCnt++;
+      }
+      const avgM=motion/cnt;
+      const bgNoise=bgDiff(vc.width,vc.height,ctx);
+      const threshold=Math.max(40,bgNoise*2.2);
+      const groundRatio=groundCnt/cnt;
 
-    // 備用：無特徵時隨機
-    if (!detectedStudent) {
-        detectedStudent = active[Math.floor(Math.random() * active.length)];
-        detectedBib = detectedStudent.bib;
-        confidence = 25 + Math.floor(Math.random() * 20);
-        matchReason = '需確認';
-    }
+      const st=document.getElementById('det-status');
+      const learned=groundLearned?'':'⚠️無跑道色';
+      const rejected=groundRatio>=0.6;
+      st.style.color=cooldown?'#ff9800':rejected?'#ff5252':avgM>threshold?'#00e676':'var(--muted)';
+      st.textContent=rejected
+        ?`⛔地面色${Math.round(groundRatio*100)}%過高，忽略 ${learned}`
+        :`動態:${Math.round(avgM)} 閾:${Math.round(threshold)} 地面:${Math.round(groundRatio*100)}%${cooldown?' 冷卻':''}${learned?' '+learned:''}`;
 
-    const exactTs = difference;
-    aiQueue.push({
-        uid: aiQueueCounter++,
-        studentId: detectedStudent.id,
-        bib: detectedBib,
-        name: detectedStudent.name,
-        timestampDiff: exactTs,
-        timeStr: formatTime(exactTs),
-        confidence,
-        matchReason
-    });
+      if(avgM>threshold&&groundRatio<0.6&&!cooldown){
+        onCrossing(pixels,ctx,vc);
+      }
+    }
+    lastPixels=new Uint8ClampedArray(pixels);
+    visRAF=requestAnimationFrame(frame);
+  }
+  visRAF=requestAnimationFrame(frame);
+}
+
+function sampleLine(ctx,w,h){
+  const N=24,pixels=[];
+  const bt=h*0.35,bb=h*0.75;
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const rx=(FL.x1+(FL.x2-FL.x1)*t)*w;
+    const ry=(FL.y1+(FL.y2-FL.y1)*t)*h;
+    if(ry<bt||ry>bb){pixels.push(0,0,0,0);continue}
+    const px=Math.max(0,Math.min(w-1,Math.floor(rx)));
+    const py=Math.max(0,Math.min(h-1,Math.floor(ry)));
+    try{const d=ctx.getImageData(px,py,1,1).data;pixels.push(d[0],d[1],d[2],255)}
+    catch{pixels.push(0,0,0,255)}
+  }
+  return pixels;
+}
+
+function bgDiff(w,h,ctx){
+  if(!baselineFrame) return 0;
+  const N=16,bt=Math.floor(h*0.35),bb=Math.floor(h*0.75);
+  let diff=0;
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const x=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
+    const y=Math.max(bt,Math.min(bb-1,Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h)));
+    const px=Math.max(0,Math.min(w-1,x));
+    try{
+      const cur=ctx.getImageData(px,y,1,1).data;
+      const bi=(y*w+px)*4;
+      diff+=Math.abs(cur[0]-baselineFrame.data[bi])+
+            Math.abs(cur[1]-baselineFrame.data[bi+1])+
+            Math.abs(cur[2]-baselineFrame.data[bi+2]);
+    }catch{}
+  }
+  return diff/(N+1);
+}
+
+function onCrossing(pixels,ctx,vc){
+  // 閃綠線
+  const fc=document.getElementById('fl-canvas');
+  const fCtx=fc.getContext('2d');
+  const w=fc.width,h=fc.height;
+  fCtx.save();
+  fCtx.strokeStyle='#00FF00';fCtx.lineWidth=6;
+  fCtx.shadowColor='#00FF00';fCtx.shadowBlur=18;
+  fCtx.beginPath();fCtx.moveTo(FL.x1*w,FL.y1*h);fCtx.lineTo(FL.x2*w,FL.y2*h);fCtx.stroke();
+  fCtx.restore();
+  setTimeout(()=>drawFL(),280);
+
+  cooldown=true;
+  setTimeout(()=>cooldown=false,1800);
+
+  // 擷取越線區顏色
+  const zc=getZoneColor(ctx,vc);
+  pushAIItem(zc);
+}
+
+function getZoneColor(ctx,vc){
+  const w=vc.width,h=vc.height;
+  const bt=Math.floor(h*0.35),bb=Math.floor(h*0.70);
+  const cx=Math.floor(((FL.x1+FL.x2)/2)*w);
+  const bx=Math.max(0,cx-18);
+  const bw=Math.min(36,w-bx);
+  const bh=Math.min(90,bb-bt);
+  try{
+    const d=ctx.getImageData(bx,bt,bw,bh).data;
+    let rs=0,gs=0,bs=0,n=0;
+    for(let i=0;i<d.length;i+=4){
+      if(!isGroundColor(d[i],d[i+1],d[i+2])){rs+=d[i];gs+=d[i+1];bs+=d[i+2];n++;}
+    }
+    if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
+  }catch{}
+  return null;
+}
+
+// ════════════════════════════════════════════════
+// AI 辨識隊列
+// ════════════════════════════════════════════════
+function simulateCrossing(){
+  if(!isRunning) return;
+  pushAIItem(null);
+}
+
+function pushAIItem(zoneColor){
+  if(!isRunning) return;
+  const active=students.filter(s=>s.currentLap<targetLaps);
+  if(!active.length) return;
+
+  let student=null,confidence=0,reason='';
+
+  if(zoneColor&&visionProfiles.length>0){
+    let best=Infinity,bestP=null;
+    for(const p of visionProfiles){
+      const pr=parseInt(p.bibColor.slice(1,3),16);
+      const pg=parseInt(p.bibColor.slice(3,5),16);
+      const pb=parseInt(p.bibColor.slice(5,7),16);
+      const d=colorDist(zoneColor.r,zoneColor.g,zoneColor.b,pr,pg,pb);
+      if(d<best){best=d;bestP=p;}
+    }
+    if(bestP&&best<80){
+      const s=active.find(s=>s.bib===bestP.number);
+      if(s){student=s;confidence=Math.round(Math.max(60,100-best*0.6));reason='🎽色彩';}
+    }
+  }
+  if(!student&&visionProfiles.length>0){
+    const ps=active.filter(s=>visionProfiles.find(p=>p.number===s.bib));
+    if(ps.length){student=ps[Math.floor(Math.random()*ps.length)];confidence=40+Math.floor(Math.random()*20);reason='🔍推測';}
+  }
+  if(!student){
+    student=active[Math.floor(Math.random()*active.length)];
+    confidence=20+Math.floor(Math.random()*20);reason='⚠️需確認';
+  }
+
+  aiQueue.push({uid:aiCnt++,studentId:student.id,bib:student.bib,name:student.name,
+    ts:difference,timeStr:fmtTime(difference),confidence,reason});
+  renderAIQueue();
+}
+
+function renderAIQueue(){
+  const c=document.getElementById('ai-queue');
+  c.innerHTML='';
+  if(!aiQueue.length){
+    c.innerHTML='<span style="color:var(--muted);font-size:0.82rem">目前無撞線動態</span>';return;
+  }
+  aiQueue.forEach(item=>{
+    const cc=item.confidence>=70?'var(--green)':item.confidence>=45?'var(--yellow)':'var(--red)';
+    const d=document.createElement('div');
+    d.className='ai-card';
+    d.innerHTML=`<div class="btag">${item.bib}</div>
+      <div><div class="aname">${item.name}</div>
+      <div class="atime">⏱${item.timeStr} <span style="color:${cc}">${item.reason}${item.confidence}%</span></div></div>
+      <button class="aok"  onclick="confirmAI(${item.uid})">✔</button>
+      <button class="aedit" onclick="openCorr(${item.uid})">✏️</button>
+      <button class="ano"  onclick="discardAI(${item.uid})">✕</button>`;
+    c.appendChild(d);
+  });
+}
+
+function confirmAI(uid){
+  const idx=aiQueue.findIndex(q=>q.uid===uid);
+  if(idx>-1){recordLap(aiQueue[idx].studentId,aiQueue[idx].ts);aiQueue.splice(idx,1);renderAIQueue();}
+}
+function discardAI(uid){
+  const idx=aiQueue.findIndex(q=>q.uid===uid);
+  if(idx>-1){aiQueue.splice(idx,1);renderAIQueue();}
+}
+function openCorr(uid){
+  const item=aiQueue.find(q=>q.uid===uid);
+  if(!item) return;
+  corrUid=uid;
+  document.getElementById('corr-disp').textContent=item.bib;
+  document.getElementById('corr-input').value='';
+  document.getElementById('corr-modal').classList.add('active');
+  document.getElementById('corr-input').focus();
+}
+function confirmCorr(){
+  const nb=document.getElementById('corr-input').value.trim();
+  if(!nb){alert('請輸入號碼！');return}
+  const idx=aiQueue.findIndex(q=>q.uid===corrUid);
+  if(idx>-1){
+    const s=students.find(s=>s.bib===nb);
+    if(s){aiQueue[idx].studentId=s.id;aiQueue[idx].bib=nb;aiQueue[idx].name=s.name;}
+    else{aiQueue[idx].bib=nb;aiQueue[idx].name=`#${nb}(未知)`;}
     renderAIQueue();
+  }
+  cancelCorr();
 }
+function cancelCorr(){corrUid=null;document.getElementById('corr-modal').classList.remove('active')}
 
-function renderAIQueue() {
-    const c = document.getElementById('ai-queue-container');
-    c.innerHTML = '';
-    if (!aiQueue.length) {
-        c.innerHTML = '<span style="color:var(--muted); font-size:0.85rem;">目前無撞線動態</span>';
-        return;
-    }
-    aiQueue.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'ai-card';
-        const confColor = item.confidence >= 70 ? 'var(--green)' : item.confidence >= 50 ? 'var(--yellow)' : 'var(--red)';
-        const reasonIcon = item.matchReason === '色彩比對' ? '🎽' : item.matchReason === '特徵推測' ? '🔍' : '⚠️';
-        card.innerHTML = `
-            <div class="bib-tag">${item.bib}</div>
-            <div>
-                <div class="ai-name">${item.name}</div>
-                <div class="ai-time">⏱ ${item.timeStr} &nbsp;<span style="color:${confColor}">${reasonIcon}${item.confidence}%</span></div>
-            </div>
-            <button class="ai-ok" onclick="confirmAI(${item.uid})">✔</button>
-            <button class="ai-edit" onclick="openCorrection(${item.uid})">✏️</button>
-            <button class="ai-no" onclick="discardAI(${item.uid})">✕</button>
-        `;
-        c.appendChild(card);
-    });
-}
-
-function confirmAI(uid) {
-    const idx = aiQueue.findIndex(q => q.uid === uid);
-    if (idx > -1) {
-        recordLap(aiQueue[idx].studentId, aiQueue[idx].timestampDiff);
-        aiQueue.splice(idx, 1);
-        renderAIQueue();
-    }
-}
-
-function discardAI(uid) {
-    const idx = aiQueue.findIndex(q => q.uid === uid);
-    if (idx > -1) { aiQueue.splice(idx, 1); renderAIQueue(); }
-}
-
-// 開啟手動修正彈窗
-function openCorrection(uid) {
-    const item = aiQueue.find(q => q.uid === uid);
-    if (!item) return;
-    pendingCorrectionUid = uid;
-    document.getElementById('correction-detected-display').textContent = item.bib;
-    document.getElementById('correction-input').value = '';
-    document.getElementById('correction-modal').classList.add('active');
-    document.getElementById('correction-input').focus();
-}
-
-function confirmCorrection() {
-    const newBib = document.getElementById('correction-input').value.trim();
-    if (!newBib) { alert('請輸入正確號碼！'); return; }
-
-    const idx = aiQueue.findIndex(q => q.uid === pendingCorrectionUid);
-    if (idx > -1) {
-        // 找到對應學生
-        const student = students.find(s => s.bib === newBib);
-        if (student) {
-            aiQueue[idx].studentId = student.id;
-            aiQueue[idx].bib = newBib;
-            aiQueue[idx].name = student.name;
-        } else {
-            // 號碼不在名單：直接更新顯示，但不能記錄
-            aiQueue[idx].bib = newBib;
-            aiQueue[idx].name = `#${newBib} (未知)`;
-        }
-        renderAIQueue();
-    }
-    cancelCorrection();
-}
-
-function cancelCorrection() {
-    pendingCorrectionUid = null;
-    document.getElementById('correction-modal').classList.remove('active');
-}
-
-// ================================================================
+// ════════════════════════════════════════════════
 // 計時器
-// ================================================================
-function updateTimer() {
-    if (!isRunning) return;
-    difference = Date.now() - startTime + timeSaved;
-    document.getElementById('timer').textContent = formatTime(difference);
-    timerAnimationId = requestAnimationFrame(updateTimer);
+// ════════════════════════════════════════════════
+function tick(){
+  if(!isRunning) return;
+  difference=Date.now()-startTime+timeSaved;
+  document.getElementById('timer').textContent=fmtTime(difference);
+  timerRAF=requestAnimationFrame(tick);
+}
+function startTimer(){
+  if(isRunning) return;
+  startTime=Date.now();isRunning=true;
+  timerRAF=requestAnimationFrame(tick);
+  document.getElementById('cbtn-start').style.display='none';
+  ['cbtn-pause','cbtn-zero','cbtn-finish'].forEach(id=>document.getElementById(id).style.display='inline-block');
+}
+function pauseTimer(){
+  if(isRunning){
+    isRunning=false;cancelAnimationFrame(timerRAF);timeSaved=difference;
+    document.getElementById('cbtn-pause').textContent='繼續';
+  }else{
+    startTime=Date.now();isRunning=true;timerRAF=requestAnimationFrame(tick);
+    document.getElementById('cbtn-pause').textContent='暫停';
+  }
+}
+function zeroTimer(){
+  if(!confirm('確定歸零並清除所有紀錄？')) return;
+  isRunning=false;cancelAnimationFrame(timerRAF);
+  startTime=Date.now();timeSaved=0;difference=0;
+  document.getElementById('timer').textContent='00:00.00';
+  aiQueue=[];renderAIQueue();
+  students.forEach(s=>{s.currentLap=0;s.lapTimes=[];s.splitTimes=[];s.lastLapMs=0;s.lastLapDiff=0;});
+  document.getElementById('cbtn-start').style.display='inline-block';
+  ['cbtn-pause','cbtn-zero','cbtn-finish'].forEach(id=>document.getElementById(id).style.display='none');
+  renderGrid();
+}
+function finishTest(){
+  isRunning=false;cancelAnimationFrame(timerRAF);
+  document.getElementById('cbtn-pause').style.display='none';
+  document.getElementById('dl-section').classList.add('active');
 }
 
-function startTimer() {
-    if (!isRunning) {
-        startTime = Date.now();
-        isRunning = true;
-        timerAnimationId = requestAnimationFrame(updateTimer);
-        document.getElementById('btn-start').style.display = 'none';
-        document.getElementById('btn-pause').style.display = 'inline-block';
-        document.getElementById('btn-zero').style.display = 'inline-block';
-        document.getElementById('btn-finish').style.display = 'inline-block';
-    }
+// ════════════════════════════════════════════════
+// 學生格子 & 圈數記錄
+// ════════════════════════════════════════════════
+function renderGrid(){
+  const g=document.getElementById('stu-grid');
+  g.innerHTML='';
+  const sorted=students.map((s,i)=>({...s,origIdx:i}));
+  sorted.sort((a,b)=>{
+    if(a.currentLap!==b.currentLap) return b.currentLap-a.currentLap;
+    if(a.currentLap===0) return parseInt(a.bib)-parseInt(b.bib);
+    return a.lastLapDiff-b.lastLapDiff;
+  });
+  sorted.forEach(s=>{
+    const btn=document.createElement('button');
+    btn.id=`sb-${s.origIdx}`;
+    let cls='sbtn';
+    if(s.currentLap>=targetLaps) cls+=' done';
+    else if(s.currentLap===targetLaps-1) cls+=' lastlap';
+    else if(s.currentLap>0) cls+=' running';
+    btn.className=cls;
+    const bib=s.bib!=='-'?`<div class="bb">#${s.bib}</div>`:'';
+    if(s.currentLap>=targetLaps)
+      btn.innerHTML=`${bib}<b>${s.name}</b><span>✅ ${s.lapTimes.at(-1)}</span>`;
+    else
+      btn.innerHTML=`${bib}<b>${s.name}</b><span>${s.currentLap}/${targetLaps}</span>`;
+    btn.onclick=()=>recordLap(s.origIdx,null);
+    g.appendChild(btn);
+  });
 }
 
-function pauseTimer() {
-    if (isRunning) {
-        isRunning = false;
-        cancelAnimationFrame(timerAnimationId);
-        timeSaved = difference;
-        document.getElementById('btn-pause').textContent = '繼續';
-    } else {
-        startTime = Date.now();
-        isRunning = true;
-        timerAnimationId = requestAnimationFrame(updateTimer);
-        document.getElementById('btn-pause').textContent = '暫停';
-    }
+function recordLap(idx,customTs){
+  if(!isRunning) return;
+  const s=students[idx];
+  if(s.currentLap>=targetLaps) return;
+  const lapDiff=customTs!==null&&customTs!==undefined?customTs:difference;
+  const now=Date.now();
+  if(s.lastLapMs>0&&(now-s.lastLapMs)<5000){
+    if(!confirm('【防誤觸】確定記錄此圈？')) return;
+  }
+  s.currentLap++;
+  const split=lapDiff-s.lastLapDiff;
+  s.lapTimes.push(fmtTime(lapDiff));
+  s.splitTimes.push(fmtTime(split));
+  s.lastLapMs=now;s.lastLapDiff=lapDiff;
+  renderGrid();
+  const btn=document.getElementById(`sb-${idx}`);
+  if(btn){
+    btn.classList.add('crossed');
+    const bib=s.bib!=='-'?`<div class="bb">#${s.bib}</div>`:'';
+    btn.innerHTML=`${bib}<b>${s.name}</b><span style="color:var(--green);font-weight:700">圈:${fmtTime(split)}</span>`;
+    if(s.timeoutId) clearTimeout(s.timeoutId);
+    s.timeoutId=setTimeout(()=>renderGrid(),2500);
+  }
 }
 
-function zeroTimer() {
-    if (!confirm('確定歸零並清除所有紀錄？')) return;
-    isRunning = false; cancelAnimationFrame(timerAnimationId);
-    startTime = Date.now(); timeSaved = 0; difference = 0;
-    document.getElementById('timer').textContent = '00:00.00';
-    aiQueue = []; renderAIQueue();
-    students.forEach(s => { s.currentLap = 0; s.lapTimes = []; s.lapSplitTimes = []; s.lastLapTimeMs = 0; s.lastLapTimeDifference = 0; });
-    document.getElementById('btn-start').style.display = 'inline-block';
-    document.getElementById('btn-pause').style.display = 'none';
-    document.getElementById('btn-finish').style.display = 'none';
-    renderGrid();
-}
-
-function finishTest() {
-    isRunning = false; cancelAnimationFrame(timerAnimationId);
-    document.getElementById('btn-pause').style.display = 'none';
-    document.getElementById('download-section').classList.add('active');
-}
-
-// ================================================================
-// 記錄圈數
-// ================================================================
-function renderGrid() {
-    const grid = document.getElementById('student-grid');
-    grid.innerHTML = '';
-    const sorted = students.map((s, i) => ({ ...s, origIdx: i }));
-    sorted.sort((a, b) => {
-        if (a.currentLap !== b.currentLap) return b.currentLap - a.currentLap;
-        if (a.currentLap === 0) return parseInt(a.bib) - parseInt(b.bib);
-        return a.lastLapTimeDifference - b.lastLapTimeDifference;
-    });
-
-    sorted.forEach((student, pos) => {
-        const btn = document.createElement('button');
-        btn.id = `sbtn-${student.origIdx}`;
-        btn.className = 'student-btn' + (student.currentLap === 0 ? '' : student.currentLap >= targetLaps ? ' finished' : student.currentLap === targetLaps - 1 ? ' last-lap' : ' running');
-        btn.style.order = pos;
-        const bibHtml = student.bib !== '-' ? `<div class="bib-badge">#${student.bib}</div>` : '';
-        if (student.currentLap >= targetLaps) {
-            btn.innerHTML = `${bibHtml}<b>${student.name}</b><span>✅ ${student.lapTimes.at(-1)}</span>`;
-        } else {
-            btn.innerHTML = `${bibHtml}<b>${student.name}</b><span>${student.currentLap}/${targetLaps}</span>`;
-        }
-        btn.onclick = () => recordLap(student.origIdx, null);
-        grid.appendChild(btn);
-    });
-}
-
-function recordLap(index, customTs = null) {
-    if (!isRunning) return;
-    const s = students[index];
-    if (s.currentLap >= targetLaps) return;
-    const lapDiff = customTs !== null ? customTs : difference;
-    const now = Date.now();
-    if (s.lastLapTimeMs > 0 && (now - s.lastLapTimeMs) < 5000) {
-        if (!confirm('【防誤觸】確定紀錄此圈？')) return;
-    }
-    s.currentLap++;
-    const split = lapDiff - s.lastLapTimeDifference;
-    s.lapTimes.push(formatTime(lapDiff));
-    s.lapSplitTimes.push(formatTime(split));
-    s.lastLapTimeMs = now;
-    s.lastLapTimeDifference = lapDiff;
-    renderGrid();
-
-    const btn = document.getElementById(`sbtn-${index}`);
-    if (btn) {
-        btn.classList.add('just-crossed');
-        const bibHtml = s.bib !== '-' ? `<div class="bib-badge">#${s.bib}</div>` : '';
-        btn.innerHTML = `${bibHtml}<b>${s.name}</b><span style="color:var(--green); font-weight:700;">圈: ${formatTime(split)}</span>`;
-        if (s.timeoutId) clearTimeout(s.timeoutId);
-        s.timeoutId = setTimeout(() => renderGrid(), 2500);
-    }
-}
-
-// ================================================================
+// ════════════════════════════════════════════════
 // 匯出 Excel
-// ================================================================
-function exportExcel() {
-    const data = students.map(s => {
-        const row = { 號碼: s.bib, 姓名: s.name, 完成圈數: `${s.currentLap}/${targetLaps}`, 總成績: s.currentLap === targetLaps ? s.lapTimes.at(-1) : '未完賽' };
-        for (let i = 0; i < targetLaps; i++) row[`第${i+1}圈`] = s.lapSplitTimes[i] || '-';
-        return row;
-    });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '測驗成績');
-    XLSX.writeFile(wb, `LapTime_${Date.now()}.xlsx`);
-    document.getElementById('download-section').classList.remove('active');
+// ════════════════════════════════════════════════
+function exportXLSX(){
+  const data=students.map(s=>{
+    const row={號碼:s.bib,姓名:s.name,完成圈數:`${s.currentLap}/${targetLaps}`,
+      總成績:s.currentLap===targetLaps?s.lapTimes.at(-1):'未完賽'};
+    for(let i=0;i<targetLaps;i++) row[`第${i+1}圈`]=s.splitTimes[i]||'-';
+    return row;
+  });
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'測驗成績');
+  XLSX.writeFile(wb,`LapTime_${Date.now()}.xlsx`);
+  document.getElementById('dl-section').classList.remove('active');
 }
 
-// ================================================================
+// ════════════════════════════════════════════════
 // 工具函式
-// ================================================================
-function formatTime(ms) {
-    const m = Math.floor(ms / 60000);
-    const s = Math.floor((ms % 60000) / 1000);
-    const cs = Math.floor((ms % 1000) / 10);
-    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+// ════════════════════════════════════════════════
+function fmtTime(ms){
+  const m=Math.floor(ms/60000);
+  const s=Math.floor((ms%60000)/1000);
+  const cs=Math.floor((ms%1000)/10);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
 }
 
-function toggleFullScreen() {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-    else document.exitFullscreen();
+function rgbHex(r,g,b){
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();
 }
 
-// 鍵盤快捷鍵
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        cancelCorrection();
-        if (lineEditMode) saveFinishLine();
+function colorDist(r1,g1,b1,r2,g2,b2){
+  const dr=r1-r2,dg=g1-g2,db=b1-b2;
+  const rm=(r1+r2)/2;
+  return Math.sqrt((2+rm/256)*dr*dr+4*dg*dg+(2+(255-rm)/256)*db*db);
+}
+
+// k-means k=2
+function kMeans2(samples){
+  if(samples.length<4) return[{r:128,g:128,b:128,stddev:30}];
+  const br=s=>(s.r*299+s.g*587+s.b*114)/1000;
+  const sorted=[...samples].sort((a,b)=>br(a)-br(b));
+  let c=[{...sorted[0]},{...sorted[sorted.length-1]}];
+  let groups=[[],[]];
+  for(let iter=0;iter<12;iter++){
+    groups=[[],[]];
+    for(const s of samples){
+      const d0=colorDist(s.r,s.g,s.b,c[0].r,c[0].g,c[0].b);
+      const d1=colorDist(s.r,s.g,s.b,c[1].r,c[1].g,c[1].b);
+      groups[d0<=d1?0:1].push(s);
     }
-    if (e.key === 'Enter' && document.getElementById('correction-modal').classList.contains('active')) {
-        confirmCorrection();
+    for(let k=0;k<2;k++){
+      if(!groups[k].length) continue;
+      c[k]={
+        r:groups[k].reduce((a,x)=>a+x.r,0)/groups[k].length,
+        g:groups[k].reduce((a,x)=>a+x.g,0)/groups[k].length,
+        b:groups[k].reduce((a,x)=>a+x.b,0)/groups[k].length
+      };
     }
+  }
+  // 計算群內標準差
+  return c.map((center,k)=>{
+    if(!groups[k]||!groups[k].length) return{...center,stddev:25};
+    const dists=groups[k].map(s=>colorDist(s.r,s.g,s.b,center.r,center.g,center.b));
+    const mean=dists.reduce((a,b)=>a+b,0)/dists.length;
+    const std=Math.sqrt(dists.reduce((a,d)=>a+(d-mean)**2,0)/dists.length);
+    return{...center,stddev:std};
+  });
+}
+
+function toggleFS(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){cancelCorr();if(lineEditMode)saveFinishLine();}
+  if(e.key==='Enter'&&document.getElementById('corr-modal').classList.contains('active')) confirmCorr();
 });
 </script>
 </body>
