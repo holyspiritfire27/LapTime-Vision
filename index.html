@@ -51,12 +51,11 @@ textarea{resize:vertical}
 /* camera box */
 #scan-cam-box{position:relative;width:100%;max-width:420px;border-radius:10px;
   overflow:hidden;border:2px solid var(--accent);background:#000;flex-shrink:0}
-#scan-video{width:100%;display:block;object-fit:cover;min-height:240px}
+/* ★ video 必須明確設高度，否則 iOS 不顯示 */
+#scan-video{width:100%;height:260px;display:block;object-fit:cover}
 
-/* ROI overlay */
-#roi-overlay{position:absolute;pointer-events:none;inset:0}
-/* darkening outside roi drawn by JS */
-#roi-canvas{position:absolute;inset:0;pointer-events:none}
+/* ROI canvas 覆蓋在 video 上方，不攔截點擊 */
+#roi-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2}
 
 /* tap-to-focus ring */
 #focus-ring{display:none;position:absolute;width:56px;height:56px;
@@ -139,13 +138,21 @@ textarea{resize:vertical}
 #cam-section{height:200px;background:#000;position:relative;flex-shrink:0;overflow:hidden}
 #viewfinder{width:100%;height:100%;object-fit:cover;display:block}
 #fl-canvas{position:absolute;inset:0;pointer-events:none;z-index:10}
-#fl-canvas.editable{pointer-events:all;cursor:crosshair}
+/* 編輯模式：canvas 降到 z-index:8，讓 overlay 的按鈕可以點到 */
+#fl-canvas.editable{pointer-events:all;cursor:crosshair;z-index:8}
 #vis-canvas{display:none}
 
-/* line edit overlay */
+/* line edit overlay：z-index 要高於 canvas，按鈕才能點到 */
 #line-edit-overlay{display:none;position:absolute;inset:0;
-  background:rgba(92,53,255,0.28);z-index:9;
-  align-items:center;justify-content:center;flex-direction:column;gap:7px}
+  background:rgba(92,53,255,0.18);z-index:12;
+  align-items:center;justify-content:center;flex-direction:column;gap:7px;
+  /* ★ 關鍵：overlay 本身不攔截點擊，只有裡面的按鈕才攔截 */
+  pointer-events:none}
+/* 但 overlay 內的控制元素要可點擊 */
+#line-edit-overlay .le-hint,
+#line-edit-overlay .le-btns,
+#line-edit-overlay .le-btns button,
+#line-edit-overlay #ground-strip{pointer-events:all}
 #line-edit-overlay.active{display:flex}
 .le-hint{background:rgba(0,0,0,0.82);color:var(--yellow);font-size:0.82rem;
   font-weight:700;padding:5px 13px;border-radius:20px}
@@ -255,7 +262,7 @@ textarea{resize:vertical}
   <!-- 號碼衣學習 -->
   <div class="setup-group">
     <div class="gtitle">🎽 號碼衣顏色學習</div>
-    <button class="btn-sec" onclick="openScanner()">📸 啟動相機學習號碼衣</button>
+    <button class="btn-sec" onclick="openScanner()">📸 啟動相機登錄學生號碼</button>
     <div id="profile-list"></div>
     <p style="font-size:0.75rem;color:var(--muted);margin-top:10px">格式：[號碼] [姓名]（例：15 王小明）</p>
     <textarea id="ta-names" rows="5" placeholder="1 王小明&#10;12 陳大喵&#10;23 李小華"></textarea>
@@ -266,10 +273,10 @@ textarea{resize:vertical}
 
 <!-- ═══════════════ SCANNER MODAL ═══════════════ -->
 <div id="scanner-modal">
-  <div class="scan-title">🎽 號碼衣顏色學習</div>
+  <div class="scan-title">📋 登錄受測學生號碼</div>
   <p style="color:var(--muted);font-size:0.8rem;text-align:center;max-width:420px">
-    對準號碼衣後點「📸 擷取」，系統分析底色與字色。<br>
-    <span style="color:var(--yellow)">號碼請手動輸入 → 點「✔ 儲存」完成登記</span>
+    對準學生號碼衣 → 點「📸 擷取」→ 輸入號碼 → 點「✔ 儲存」<br>
+    <span style="color:var(--yellow)">同時記錄號碼衣顏色特徵，供測驗時辨識使用</span>
   </p>
 
   <div id="scan-cam-box">
@@ -493,44 +500,70 @@ function openScanner(){
 async function startScanCam(){
   const video=document.getElementById('scan-video');
   const roiCanvas=document.getElementById('roi-canvas');
-  try{
-    // ★ 修改2：自動對焦 + 高解析度
-    scannerStream=await navigator.mediaDevices.getUserMedia({video:{
-      facingMode:'environment',
-      width:{ideal:1920},height:{ideal:1080},
-      focusMode:'continuous',
-      focusDistance:0.3,   // 近距離對焦（號碼衣距離約30-60cm）
-      zoom:1
-    }});
-    video.srcObject=scannerStream;
-    video.onloadedmetadata=()=>{
-      video.play();
-      setupROICanvas(roiCanvas, video);
-    };
-    // 啟用連續對焦
-    const track=scannerStream.getVideoTracks()[0];
-    const caps=track.getCapabilities?.();
-    if(caps?.focusMode?.includes('continuous')){
-      await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
-    }
-  }catch(err){
-    alert(`無法開啟相機：${err.message}`);
+
+  // ★ 步驟1：先用最基本的 constraint 開啟相機（保證所有裝置都能成功）
+  //    不加 focusMode/zoom 等可能不相容的參數，避免整個 getUserMedia 失敗
+  const basicConstraints=[
+    // 優先後鏡頭高解析度
+    {video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}},
+    // 備用：後鏡頭標準
+    {video:{facingMode:'environment'}},
+    // 最終備用：任何鏡頭
+    {video:true}
+  ];
+
+  let stream=null;
+  for(const c of basicConstraints){
+    try{ stream=await navigator.mediaDevices.getUserMedia(c); break; }
+    catch{ continue; }
+  }
+  if(!stream){
+    alert('無法開啟相機，請確認已授予相機權限！');
     closeScanner();
+    return;
+  }
+  scannerStream=stream;
+  video.srcObject=stream;
+  video.onloadedmetadata=()=>{
+    video.play();
+    // ROI canvas 尺寸跟隨 video 顯示尺寸
+    roiCanvas.width=video.offsetWidth||400;
+    roiCanvas.height=video.offsetHeight||260;
+    drawROI(roiCanvas);
+  };
+  video.onresize=()=>{
+    roiCanvas.width=video.offsetWidth||400;
+    roiCanvas.height=video.offsetHeight||260;
+    drawROI(roiCanvas);
+  };
+
+  // ★ 步驟2：相機開啟成功後，嘗試套用進階對焦（失敗不影響主流程）
+  const track=stream.getVideoTracks()[0];
+  if(track){
+    const caps=track.getCapabilities?.() || {};
+    const adv={};
+    if(caps.focusMode?.includes('continuous')) adv.focusMode='continuous';
+    if(Object.keys(adv).length>0){
+      try{ await track.applyConstraints({advanced:[adv]}); }
+      catch(e){ console.log('對焦設定不支援，略過:',e.message); }
+    }
   }
 }
 
 // 設定 ROI canvas（繪製對焦框與暗化遮罩）
+// 注意：不在此處綁定 click 事件，避免重複綁定
+// click 事件改為在 HTML 中 onclick 處理，或在 openScanner 只綁一次
+let _tapFocusHandler=null;
 function setupROICanvas(roiCanvas, video){
-  const updateSize=()=>{
-    roiCanvas.width=video.offsetWidth||video.clientWidth||400;
-    roiCanvas.height=video.offsetHeight||video.clientHeight||300;
-    drawROI(roiCanvas);
-  };
-  updateSize();
-  // 點擊畫面觸發對焦
-  document.getElementById('scan-cam-box').addEventListener('click', e=>{
-    tapFocus(e, video);
-  },{once:false});
+  // ROI canvas 尺寸跟隨 video 顯示尺寸（video 已設定固定高度 260px）
+  roiCanvas.width=video.offsetWidth||video.clientWidth||400;
+  roiCanvas.height=video.offsetHeight||video.clientHeight||260;
+  drawROI(roiCanvas);
+  // 移除舊的點擊事件再重新綁定，防止重複
+  const box=document.getElementById('scan-cam-box');
+  if(_tapFocusHandler) box.removeEventListener('click',_tapFocusHandler);
+  _tapFocusHandler=(e)=>tapFocus(e,video);
+  box.addEventListener('click',_tapFocusHandler);
 }
 
 // ROI 框：畫面中央 60% 寬 × 50% 高
@@ -721,7 +754,13 @@ function deleteBibProfile(num){
 }
 
 function closeScanner(){
-  if(scannerStream) scannerStream.getTracks().forEach(t=>t.stop());
+  if(scannerStream){ scannerStream.getTracks().forEach(t=>t.stop()); scannerStream=null; }
+  // 清除對焦事件
+  if(_tapFocusHandler){
+    const box=document.getElementById('scan-cam-box');
+    box.removeEventListener('click',_tapFocusHandler);
+    _tapFocusHandler=null;
+  }
   document.getElementById('scanner-modal').classList.remove('active');
 }
 
