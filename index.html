@@ -176,10 +176,12 @@ textarea{resize:vertical}
 /* student grid */
 #stu-section{padding:9px;overflow-y:auto;flex-grow:1}
 #stu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:7px}
-.sbtn{padding:9px 4px;font-size:0.88rem;border:1px solid var(--border);border-radius:7px;
+.sbtn{padding:12px 4px;font-size:0.88rem;border:1px solid var(--border);border-radius:7px;
   cursor:pointer;background:var(--card);color:var(--text);transition:all 0.12s;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-.sbtn:active{transform:scale(0.93)}
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  /* ★ 觸控友善：最小點擊高度 60px */
+  min-height:60px;-webkit-tap-highlight-color:transparent;user-select:none}
+.sbtn:active{transform:scale(0.91);background:var(--accent);color:#000}
 .sbtn .bb{font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;
   color:var(--yellow);background:rgba(0,0,0,0.4);padding:1px 6px;border-radius:10px}
 .sbtn span{font-size:0.75rem;opacity:0.85}
@@ -314,6 +316,8 @@ textarea{resize:vertical}
         <div class="cr-label" id="txt-chip-label"></div>
       </div>
     </div>
+    <!-- 錯誤訊息 -->
+    <div id="color-err-msg" style="color:var(--yellow);font-size:0.8rem;font-weight:700;min-height:0"></div>
     <div style="border-top:1px solid var(--border);padding-top:8px">
       <p style="font-size:0.82rem;color:var(--yellow);font-weight:700;margin-bottom:7px">
         ✏️ 請輸入這件號碼衣的號碼：
@@ -374,7 +378,12 @@ textarea{resize:vertical}
     <div id="det-status">準備中…</div>
   </div>
 
-  <div id="stu-section"><div id="stu-grid"></div></div>
+  <div id="stu-section">
+    <div style="font-size:0.68rem;color:var(--muted);padding:4px 4px 2px;line-height:1.5">
+      👆 點擊學生方塊 = 手動記圈（立即生效）　·　AI 辨識結果在上方待確認列
+    </div>
+    <div id="stu-grid"></div>
+  </div>
 
   <div id="dl-section">
     <h2>🎉 測驗結束</h2>
@@ -643,66 +652,118 @@ async function tapFocus(e, video){
   }
 }
 
-// ★ 修改1：擷取並分析 — 使用 ROI 區域做顏色分析
+// 擷取並分析 — 以「顯示尺寸」為基準，確保 ROI 與畫面對齊
 function captureFrame(){
   const video=document.getElementById('scan-video');
+  if(!video.videoWidth){alert('相機尚未就緒，請稍等！');return}
+
   const capCanvas=document.getElementById('cap-canvas');
-  const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
-
-  const vw=video.videoWidth||640, vh=video.videoHeight||480;
-  capCanvas.width=vw; capCanvas.height=vh;
-  capCtx.drawImage(video,0,0,vw,vh);
-
-  // 在擷取圖上畫黃色 ROI 框供預覽
-  const roi=getROIRect(vw,vh);
-  capCtx.strokeStyle='#ffea00';
-  capCtx.lineWidth=3;
-  capCtx.strokeRect(roi.x,roi.y,roi.w,roi.h);
-
-  // 顯示預覽
   const capBox=document.getElementById('cap-preview-box');
+
+  // ★ 用顯示尺寸（offsetWidth/Height）而不是原始解析度
+  //   確保 ROI 框和實際畫面完全對齊
+  const dw=video.offsetWidth||400;
+  const dh=video.offsetHeight||260;
+  capCanvas.width=dw;
+  capCanvas.height=dh;
+
+  const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
+  // 把 video 縮放繪製到顯示尺寸
+  capCtx.drawImage(video,0,0,dw,dh);
+
+  // ROI 框（與 roi-canvas 完全一致）
+  const roi=getROIRect(dw,dh);
+
+  // 在預覽圖上畫黃框
+  capCtx.strokeStyle='#ffea00';
+  capCtx.lineWidth=2.5;
+  capCtx.setLineDash([8,5]);
+  capCtx.strokeRect(roi.x,roi.y,roi.w,roi.h);
+  capCtx.setLineDash([]);
+
   capBox.style.display='flex';
 
-  // ════ 顏色分析 ════
-  // 在 ROI 內取樣，用 k-means(2) 分出「底色」和「字色（最暗色）」
-  const roiData=capCtx.getImageData(roi.x,roi.y,roi.w,roi.h).data;
+  // ════ ROI 內顏色分析 ════
+  // ★ 只取 ROI 中央 70% 的區域，排除框邊緣的干擾
+  const inner={
+    x:roi.x+Math.floor(roi.w*0.15),
+    y:roi.y+Math.floor(roi.h*0.15),
+    w:Math.floor(roi.w*0.70),
+    h:Math.floor(roi.h*0.70)
+  };
+  const roiData=capCtx.getImageData(inner.x,inner.y,inner.w,inner.h).data;
   const samples=[];
-  const step=4; // 每 step 像素取一個
+  const step=2; // 每 2 像素取樣一次（更密集）
   for(let i=0;i<roiData.length;i+=4*step){
     const r=roiData[i],g=roiData[i+1],b=roiData[i+2];
-    // 排除接近純黑/純白的邊緣雜訊
     const bright=(r*299+g*587+b*114)/1000;
-    if(bright<8||bright>247) continue;
+    // ★ 放寬亮度過濾（原本 <8 || >247 太嚴），改為 <5 || >250
+    if(bright<5||bright>250) continue;
     samples.push({r,g,b});
   }
 
-  if(samples.length<20){
-    alert('無法取得足夠色彩資訊，請確認號碼衣已對準框內並光線充足！');
+  if(samples.length<30){
+    // ★ 取樣不足時顯示更有幫助的提示，不直接 alert 中斷
+    showColorResult(null,null,'⚠️ 取樣不足，請確認號碼衣占滿框內且光線充足');
     return;
   }
 
-  // k-means(2)：一群是底色（較多），一群是字色（較少、對比強）
+  // ★ 改良分群策略：
+  //   先用「飽和度」過濾，高飽和度的樣本更可能是號碼衣底色
+  //   再用 k-means(2) 找出兩個主色群
   const clusters=kMeans2(samples);
-  // 亮度較高的是底色
-  const bright0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
-  const bright1=(clusters[1]?.r*299+clusters[1]?.g*587+clusters[1]?.b*114)/1000||0;
-  const bibC  = bright0>=bright1 ? clusters[0] : clusters[1];
-  const txtC  = bright0< bright1 ? clusters[0] : (clusters[1]||clusters[0]);
+  if(!clusters||clusters.length<2){
+    showColorResult(null,null,'⚠️ 色彩過於單一，請調整拍攝角度');
+    return;
+  }
+
+  // ★ 用「飽和度」而非「亮度」來判斷哪個是底色
+  //   底色通常飽和度較高（彩色），字色是白/黑（飽和度低）
+  const sat=c=>{
+    const max=Math.max(c.r,c.g,c.b),min=Math.min(c.r,c.g,c.b);
+    return max===0?0:(max-min)/max;
+  };
+  const s0=sat(clusters[0]),s1=sat(clusters[1]);
+  // 若兩群飽和度差異明顯，高飽和度是底色；否則用亮度判斷
+  let bibC,txtC;
+  if(Math.abs(s0-s1)>0.15){
+    bibC=s0>s1?clusters[0]:clusters[1];
+    txtC=s0>s1?clusters[1]:clusters[0];
+  } else {
+    const bright0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
+    const bright1=(clusters[1].r*299+clusters[1].g*587+clusters[1].b*114)/1000;
+    bibC=bright0>=bright1?clusters[0]:clusters[1];
+    txtC=bright0<bright1?clusters[0]:clusters[1];
+  }
 
   const bibHex=rgbHex(Math.round(bibC.r),Math.round(bibC.g),Math.round(bibC.b));
   const txtHex=rgbHex(Math.round(txtC.r),Math.round(txtC.g),Math.round(txtC.b));
-
   pendingCapture={bibHex,txtHex};
+  showColorResult(bibHex,txtHex,null);
+}
 
-  // 更新 UI
+// 統一更新顏色結果 UI
+function showColorResult(bibHex,txtHex,errMsg){
+  const panel=document.getElementById('color-result-panel');
+  const errEl=document.getElementById('color-err-msg');
+  if(errMsg){
+    if(errEl) errEl.textContent=errMsg;
+    panel.classList.add('show');
+    document.getElementById('bib-chip').style.background='#333';
+    document.getElementById('txt-chip').style.background='#333';
+    document.getElementById('bib-chip-label').textContent='—';
+    document.getElementById('txt-chip-label').textContent='—';
+    return;
+  }
+  if(errEl) errEl.textContent='';
   document.getElementById('bib-chip').style.background=bibHex;
   document.getElementById('txt-chip').style.background=txtHex;
   document.getElementById('bib-chip-label').textContent=bibHex;
   document.getElementById('txt-chip-label').textContent=txtHex;
-  document.getElementById('color-result-panel').classList.add('show');
+  panel.classList.add('show');
   document.getElementById('scan-saved-msg').style.display='none';
   document.getElementById('scan-bib-input').value='';
-  document.getElementById('scan-bib-input').focus();
+  setTimeout(()=>document.getElementById('scan-bib-input').focus(),100);
 }
 
 function saveScannedBib(){
@@ -1061,28 +1122,29 @@ function startVisionLoop(){
 
     const pixels=sampleLine(ctx,vc.width,vc.height);
     if(lastPixels&&pixels.length===lastPixels.length){
-      let motion=0,groundCnt=0;
-      const cnt=pixels.length/4;
+      let motion=0,groundCnt=0,validCnt=0;
       for(let i=0;i<pixels.length;i+=4){
-        const r=pixels[i],g=pixels[i+1],b=pixels[i+2],a=pixels[i+3];
-        if(a===0) continue; // 跳過帶外點
+        const r=pixels[i],g=pixels[i+1],b=pixels[i+2];
         motion+=Math.abs(r-lastPixels[i])+Math.abs(g-lastPixels[i+1])+Math.abs(b-lastPixels[i+2]);
         if(isGroundColor(r,g,b)) groundCnt++;
+        validCnt++;
       }
-      const avgM=motion/cnt;
+      const avgM=validCnt>0?motion/validCnt:0;
       const bgNoise=bgDiff(vc.width,vc.height,ctx);
-      const threshold=Math.max(40,bgNoise*2.2);
-      const groundRatio=groundCnt/cnt;
+      // ★ 閾值降低：max(25, bgNoise*1.8)，讓偵測更靈敏
+      const threshold=Math.max(25,bgNoise*1.8);
+      // ★ 地面否決閾值提高到 85%（之前 60% 太容易誤拒）
+      const groundRatio=validCnt>0?groundCnt/validCnt:0;
+      const rejected=groundLearned&&groundRatio>=0.85;
 
       const st=document.getElementById('det-status');
-      const learned=groundLearned?'':'⚠️無跑道色';
-      const rejected=groundRatio>=0.6;
+      const learned=groundLearned?`跑道色✓`:'未學跑道色';
       st.style.color=cooldown?'#ff9800':rejected?'#ff5252':avgM>threshold?'#00e676':'var(--muted)';
       st.textContent=rejected
-        ?`⛔地面色${Math.round(groundRatio*100)}%過高，忽略 ${learned}`
-        :`動態:${Math.round(avgM)} 閾:${Math.round(threshold)} 地面:${Math.round(groundRatio*100)}%${cooldown?' 冷卻':''}${learned?' '+learned:''}`;
+        ?`⛔地面色${Math.round(groundRatio*100)}%，忽略`
+        :`動:${Math.round(avgM)} 閾:${Math.round(threshold)} 地:${Math.round(groundRatio*100)}%${cooldown?' ⏳':''}  ${learned}`;
 
-      if(avgM>threshold&&groundRatio<0.6&&!cooldown){
+      if(avgM>threshold&&!rejected&&!cooldown){
         onCrossing(pixels,ctx,vc);
       }
     }
@@ -1092,34 +1154,43 @@ function startVisionLoop(){
   visRAF=requestAnimationFrame(frame);
 }
 
+// 沿終點線全段取樣，每個點取線段垂直方向 ±lineWidth 寬度的平均
+// 不再限制中帶（那個限制反而會讓水平線的所有點都被跳過）
 function sampleLine(ctx,w,h){
-  const N=24,pixels=[];
-  const bt=h*0.35,bb=h*0.75;
+  const N=32,pixels=[];
   for(let i=0;i<=N;i++){
     const t=i/N;
     const rx=(FL.x1+(FL.x2-FL.x1)*t)*w;
     const ry=(FL.y1+(FL.y2-FL.y1)*t)*h;
-    if(ry<bt||ry>bb){pixels.push(0,0,0,0);continue}
     const px=Math.max(0,Math.min(w-1,Math.floor(rx)));
     const py=Math.max(0,Math.min(h-1,Math.floor(ry)));
-    try{const d=ctx.getImageData(px,py,1,1).data;pixels.push(d[0],d[1],d[2],255)}
-    catch{pixels.push(0,0,0,255)}
+    // ★ 每個採樣點取 3 個垂直方向像素平均，提升抗雜訊能力
+    let r=0,g=0,b=0,cnt=0;
+    for(let dy=-1;dy<=1;dy++){
+      const sy=Math.max(0,Math.min(h-1,py+dy));
+      try{
+        const d=ctx.getImageData(px,sy,1,1).data;
+        r+=d[0];g+=d[1];b+=d[2];cnt++;
+      }catch{}
+    }
+    if(cnt>0) pixels.push(Math.round(r/cnt),Math.round(g/cnt),Math.round(b/cnt),255);
+    else pixels.push(0,0,0,255);
   }
   return pixels;
 }
 
+// 計算終點線上的背景雜訊（用來設動態閾值）
 function bgDiff(w,h,ctx){
   if(!baselineFrame) return 0;
-  const N=16,bt=Math.floor(h*0.35),bb=Math.floor(h*0.75);
+  const N=16;
   let diff=0;
   for(let i=0;i<=N;i++){
     const t=i/N;
-    const x=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
-    const y=Math.max(bt,Math.min(bb-1,Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h)));
-    const px=Math.max(0,Math.min(w-1,x));
+    const px=Math.max(0,Math.min(w-1,Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w)));
+    const py=Math.max(0,Math.min(h-1,Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h)));
     try{
-      const cur=ctx.getImageData(px,y,1,1).data;
-      const bi=(y*w+px)*4;
+      const cur=ctx.getImageData(px,py,1,1).data;
+      const bi=(py*w+px)*4;
       diff+=Math.abs(cur[0]-baselineFrame.data[bi])+
             Math.abs(cur[1]-baselineFrame.data[bi+1])+
             Math.abs(cur[2]-baselineFrame.data[bi+2]);
@@ -1148,21 +1219,29 @@ function onCrossing(pixels,ctx,vc){
   pushAIItem(zc);
 }
 
+// 擷取越線區顏色 — 沿整條終點線，向兩側各展開 20px 的帶狀區域
 function getZoneColor(ctx,vc){
   const w=vc.width,h=vc.height;
-  const bt=Math.floor(h*0.35),bb=Math.floor(h*0.70);
-  const cx=Math.floor(((FL.x1+FL.x2)/2)*w);
-  const bx=Math.max(0,cx-18);
-  const bw=Math.min(36,w-bx);
-  const bh=Math.min(90,bb-bt);
-  try{
-    const d=ctx.getImageData(bx,bt,bw,bh).data;
-    let rs=0,gs=0,bs=0,n=0;
-    for(let i=0;i<d.length;i+=4){
-      if(!isGroundColor(d[i],d[i+1],d[i+2])){rs+=d[i];gs+=d[i+1];bs+=d[i+2];n++;}
+  // 沿終點線取 N 個點，每個點向垂直方向延伸 ±20px
+  const N=20;
+  let rs=0,gs=0,bs=0,n=0;
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const bx=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
+    const by=Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h);
+    for(let dy=-20;dy<=20;dy+=4){
+      const sy=Math.max(0,Math.min(h-1,by+dy));
+      const sx=Math.max(0,Math.min(w-1,bx));
+      try{
+        const d=ctx.getImageData(sx,sy,1,1).data;
+        // 排除地面顏色
+        if(!isGroundColor(d[0],d[1],d[2])){
+          rs+=d[0];gs+=d[1];bs+=d[2];n++;
+        }
+      }catch{}
     }
-    if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
-  }catch{}
+  }
+  if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
   return null;
 }
 
@@ -1332,26 +1411,37 @@ function renderGrid(){
   });
 }
 
+// ★ 問題3：手動記圈
+//   直接點按鈕 = 立即記圈（不彈 confirm）
+//   2 秒內重複點擊才警示防誤觸（用視覺閃爍而非 confirm 阻擋）
 function recordLap(idx,customTs){
   if(!isRunning) return;
   const s=students[idx];
   if(s.currentLap>=targetLaps) return;
   const lapDiff=customTs!==null&&customTs!==undefined?customTs:difference;
   const now=Date.now();
-  if(s.lastLapMs>0&&(now-s.lastLapMs)<5000){
-    if(!confirm('【防誤觸】確定記錄此圈？')) return;
-  }
+
+  // ★ 防誤觸：2 秒內重複點同一人，閃紅色警告但仍記錄（AI 確認時不受此限）
+  const tooFast=customTs===null&&s.lastLapMs>0&&(now-s.lastLapMs)<2000;
+
   s.currentLap++;
   const split=lapDiff-s.lastLapDiff;
   s.lapTimes.push(fmtTime(lapDiff));
   s.splitTimes.push(fmtTime(split));
   s.lastLapMs=now;s.lastLapDiff=lapDiff;
   renderGrid();
+
   const btn=document.getElementById(`sb-${idx}`);
   if(btn){
     btn.classList.add('crossed');
     const bib=s.bib!=='-'?`<div class="bb">#${s.bib}</div>`:'';
-    btn.innerHTML=`${bib}<b>${s.name}</b><span style="color:var(--green);font-weight:700">圈:${fmtTime(split)}</span>`;
+    if(tooFast){
+      // 閃紅色（提醒可能誤觸）
+      btn.style.border='2px solid var(--red)';
+      btn.innerHTML=`${bib}<b>${s.name}</b><span style="color:var(--red);font-weight:700">⚠️${fmtTime(split)}</span>`;
+    } else {
+      btn.innerHTML=`${bib}<b>${s.name}</b><span style="color:var(--green);font-weight:700">✓${fmtTime(split)}</span>`;
+    }
     if(s.timeoutId) clearTimeout(s.timeoutId);
     s.timeoutId=setTimeout(()=>renderGrid(),2500);
   }
