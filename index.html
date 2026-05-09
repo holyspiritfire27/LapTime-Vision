@@ -649,94 +649,93 @@ async function tapFocus(e, video){
   }
 }
 
-// 擷取並分析 — 以「顯示尺寸」為基準，確保 ROI 與畫面對齊
+// 擷取並分析號碼衣顏色
 function captureFrame(){
   const video=document.getElementById('scan-video');
-  if(!video.videoWidth){alert('相機尚未就緒，請稍等！');return}
+  if(!video.videoWidth||!video.videoHeight){
+    alert('相機尚未就緒，請稍等！');return;
+  }
+
+  // ★ 統一用原始解析度（videoWidth/Height），永遠不為 0
+  //   roi-canvas 的 ROI 框也統一用此尺寸
+  const vw=video.videoWidth;
+  const vh=video.videoHeight;
 
   const capCanvas=document.getElementById('cap-canvas');
-  const capBox=document.getElementById('cap-preview-box');
-
-  // ★ 用顯示尺寸（offsetWidth/Height）而不是原始解析度
-  //   確保 ROI 框和實際畫面完全對齊
-  const dw=video.offsetWidth||400;
-  const dh=video.offsetHeight||260;
-  capCanvas.width=dw;
-  capCanvas.height=dh;
+  // 預覽縮小到最大 420px 寬，保持比例
+  const scale=Math.min(1, 420/vw);
+  capCanvas.width=Math.round(vw*scale);
+  capCanvas.height=Math.round(vh*scale);
 
   const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
-  // 把 video 縮放繪製到顯示尺寸
-  capCtx.drawImage(video,0,0,dw,dh);
+  capCtx.drawImage(video, 0,0, capCanvas.width, capCanvas.height);
 
-  // ROI 框（與 roi-canvas 完全一致）
-  const roi=getROIRect(dw,dh);
+  // ROI：用原始解析度計算
+  const roi=getROIRect(vw, vh);
 
-  // 在預覽圖上畫黃框
+  // 預覽圖上的黃框（縮放後）
   capCtx.strokeStyle='#ffea00';
-  capCtx.lineWidth=2.5;
-  capCtx.setLineDash([8,5]);
-  capCtx.strokeRect(roi.x,roi.y,roi.w,roi.h);
+  capCtx.lineWidth=2;
+  capCtx.setLineDash([7,4]);
+  capCtx.strokeRect(roi.x*scale, roi.y*scale, roi.w*scale, roi.h*scale);
   capCtx.setLineDash([]);
+  document.getElementById('cap-preview-box').style.display='flex';
 
-  capBox.style.display='flex';
+  // ── 從原始解析度的 ROI 取像素 ──
+  // 用 offscreen canvas 在原始尺寸操作，確保不受顯示縮放影響
+  const offscreen=document.createElement('canvas');
+  offscreen.width=vw; offscreen.height=vh;
+  const offCtx=offscreen.getContext('2d',{willReadFrequently:true});
+  offCtx.drawImage(video, 0,0, vw, vh);
 
-  // ════ ROI 內顏色分析 ════
-  // ★ 只取 ROI 中央 70% 的區域，排除框邊緣的干擾
-  const inner={
-    x:roi.x+Math.floor(roi.w*0.15),
-    y:roi.y+Math.floor(roi.h*0.15),
-    w:Math.floor(roi.w*0.70),
-    h:Math.floor(roi.h*0.70)
-  };
-  const roiData=capCtx.getImageData(inner.x,inner.y,inner.w,inner.h).data;
+  // 只取 ROI 中央 70% 面積，排除邊框干擾
+  const ix=roi.x+Math.floor(roi.w*0.15);
+  const iy=roi.y+Math.floor(roi.h*0.15);
+  const iw=Math.max(1,Math.floor(roi.w*0.70));
+  const ih=Math.max(1,Math.floor(roi.h*0.70));
+  const roiData=offCtx.getImageData(ix,iy,iw,ih).data;
+
+  // 取樣（步進 3px 即可，原始解析度樣本量足夠）
   const samples=[];
-  const step=2; // 每 2 像素取樣一次（更密集）
-  for(let i=0;i<roiData.length;i+=4*step){
+  for(let i=0;i<roiData.length;i+=4*3){
     const r=roiData[i],g=roiData[i+1],b=roiData[i+2];
     const bright=(r*299+g*587+b*114)/1000;
-    // ★ 放寬亮度過濾（原本 <8 || >247 太嚴），改為 <5 || >250
-    if(bright<5||bright>250) continue;
+    if(bright<8||bright>248) continue; // 排除純黑/純白雜訊
     samples.push({r,g,b});
   }
 
-  if(samples.length<30){
-    // ★ 取樣不足時顯示更有幫助的提示，不直接 alert 中斷
-    showColorResult(null,null,'⚠️ 取樣不足，請確認號碼衣占滿框內且光線充足');
+  if(samples.length<50){
+    showColorResult(null,null,'⚠️ 樣本不足，請確認號碼衣填滿黃框且光線充足');
     return;
   }
 
-  // ★ 改良分群策略：
-  //   先用「飽和度」過濾，高飽和度的樣本更可能是號碼衣底色
-  //   再用 k-means(2) 找出兩個主色群
+  // k-means(2) 分出兩個主色群
   const clusters=kMeans2(samples);
   if(!clusters||clusters.length<2){
-    showColorResult(null,null,'⚠️ 色彩過於單一，請調整拍攝角度');
+    showColorResult(null,null,'⚠️ 色彩單一，無法區分底色與字色');
     return;
   }
 
-  // ★ 用「飽和度」而非「亮度」來判斷哪個是底色
-  //   底色通常飽和度較高（彩色），字色是白/黑（飽和度低）
-  const sat=c=>{
-    const max=Math.max(c.r,c.g,c.b),min=Math.min(c.r,c.g,c.b);
-    return max===0?0:(max-min)/max;
-  };
-  const s0=sat(clusters[0]),s1=sat(clusters[1]);
-  // 若兩群飽和度差異明顯，高飽和度是底色；否則用亮度判斷
-  let bibC,txtC;
-  if(Math.abs(s0-s1)>0.15){
+  // 判斷哪個是底色（飽和度高 = 彩色底），哪個是字色（飽和度低 = 白/黑字）
+  const sat=c=>{const mx=Math.max(c.r,c.g,c.b),mn=Math.min(c.r,c.g,c.b);return mx===0?0:(mx-mn)/mx;};
+  const s0=sat(clusters[0]), s1=sat(clusters[1]);
+  let bibC, txtC;
+  if(Math.abs(s0-s1)>0.12){
+    // 飽和度差異明顯：高飽和 = 底色
     bibC=s0>s1?clusters[0]:clusters[1];
     txtC=s0>s1?clusters[1]:clusters[0];
   } else {
-    const bright0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
-    const bright1=(clusters[1].r*299+clusters[1].g*587+clusters[1].b*114)/1000;
-    bibC=bright0>=bright1?clusters[0]:clusters[1];
-    txtC=bright0<bright1?clusters[0]:clusters[1];
+    // 飽和度相近：較亮的是底色（排除深色底）
+    const b0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
+    const b1=(clusters[1].r*299+clusters[1].g*587+clusters[1].b*114)/1000;
+    bibC=b0>=b1?clusters[0]:clusters[1];
+    txtC=b0<b1?clusters[0]:clusters[1];
   }
 
   const bibHex=rgbHex(Math.round(bibC.r),Math.round(bibC.g),Math.round(bibC.b));
   const txtHex=rgbHex(Math.round(txtC.r),Math.round(txtC.g),Math.round(txtC.b));
-  pendingCapture={bibHex,txtHex};
-  showColorResult(bibHex,txtHex,null);
+  pendingCapture={bibHex, txtHex};
+  showColorResult(bibHex, txtHex, null);
 }
 
 // 統一更新顏色結果 UI
@@ -941,12 +940,11 @@ function drawFL(draft){
     ctx.restore();
   }
 
-  // ★ 感應帶範圍視覺化（顯示實際偵測區域）
+  // ★ 感應帶範圍視覺化（沿終點線法線展開 ±40% 畫面高）
   if(!lineEditMode){
-    const zoneHalf=h*0.25;
-    // 計算感應帶四個角
+    const zoneHalf=h*0.40;
     const dx=(x2-x1), dy=(y2-y1), len=Math.sqrt(dx*dx+dy*dy)||1;
-    const nx=-dy/len, ny=dx/len; // 法向量（垂直於終點線）
+    const nx=-dy/len, ny=dx/len;
     const p1x=x1+nx*zoneHalf, p1y=y1+ny*zoneHalf;
     const p2x=x2+nx*zoneHalf, p2y=y2+ny*zoneHalf;
     const p3x=x2-nx*zoneHalf, p3y=y2-ny*zoneHalf;
@@ -957,8 +955,7 @@ function drawFL(draft){
     ctx.moveTo(p1x,p1y);ctx.lineTo(p2x,p2y);
     ctx.lineTo(p3x,p3y);ctx.lineTo(p4x,p4y);
     ctx.closePath();ctx.fill();
-    // 虛線邊界
-    ctx.strokeStyle='rgba(0,230,118,0.45)';
+    ctx.strokeStyle='rgba(0,230,118,0.5)';
     ctx.lineWidth=1;ctx.setLineDash([5,4]);
     ctx.beginPath();ctx.moveTo(p1x,p1y);ctx.lineTo(p2x,p2y);ctx.stroke();
     ctx.beginPath();ctx.moveTo(p4x,p4y);ctx.lineTo(p3x,p3y);ctx.stroke();
@@ -1050,7 +1047,7 @@ function saveFinishLine(){
 function resetFinishLine(){
   FL={x1:0.5,y1:0,x2:0.5,y2:1};tempFL=null;
   groundLearned=false;groundClusters=[];
-  tripwirePoints=null; motionAboveCount=0;
+  tripRect=null; baselineRoi=null; motionAboveCount=0;
   document.getElementById('ground-strip').classList.remove('show');
   drawFL();
 }
@@ -1095,7 +1092,7 @@ function autoLearnGround(){
 
   // 沿終點線的色彩通常有兩群：跑道色 + 白色線條（若有）
   const clusters=kMeans2(samples);
-  tripwirePoints=null; // ★ 終點線改變，重建感應帶
+  tripRect=null; // ★ 終點線改變，重建感應帶矩形
   groundClusters=clusters
     .filter(c=>c&&c.r!==undefined)
     .map(c=>({
@@ -1130,158 +1127,144 @@ function isGroundColor(r,g,b){
 }
 
 // ════════════════════════════════════════════════
-// 越線偵測主迴圈 — 「感應帶」策略
+// 越線偵測主迴圈
+// ════════════════════════════════════════════════
 //
-// ★ 核心改變：
-//   終點線只定義「感應帶」的中心軸
-//   實際偵測區域 = 沿終點線方向、垂直展開的矩形帶狀區
-//   感應帶寬度 = 畫面高度的 50%（含人體軀幹）
-//   這樣不管終點線在地面哪個位置，整個人體都在偵測範圍內
+// ★ 核心設計：「矩形感應帶 + 整塊 getImageData + 靜態基線差分」
+//
+// 問題分析（從影片數據量化得出）：
+//   - 逐點 getImageData(1×1) 呼叫數百次 → 實際 fps 降至 5~8
+//   - 相鄰幀差分峰值只有 5.7，但閾值是 18 → 永遠偵測不到
+//   - 學生通過時只有 1~2 幀，fps=5 可能直接跳過
+//
+// 解法：
+//   A. 一次 getImageData 取整個矩形感應帶 → fps 恢復 25+
+//   B. 靜態基線差分（對比靜止背景）→ 信號強 3~4 倍
+//   C. 1 幀即觸發（靜態基線本身就過濾了雜訊）
+//   D. 感應帶沿終點線法線方向展開 ±40% 畫面高
 // ════════════════════════════════════════════════
 
-// 感應帶取樣快取（避免每幀重新計算採樣點座標）
-let tripwirePoints=null; // [{px,py}]
+// 感應帶矩形快取 {x,y,w,h}（原始解析度座標）
+let tripRect=null;
 
-function buildTripwirePoints(w,h){
-  // 沿終點線方向取 N 個等分點，每個點向垂直方向延伸 ±zoneHalf
-  const N=20; // 沿線方向分段數
-  const zoneHalf=Math.floor(h*0.25); // 感應帶半寬 = 25% 畫面高（上下各 25% = 共 50%）
-  const dyStep=4; // 垂直方向每 4px 取一個點
-  const pts=[];
-  for(let i=0;i<=N;i++){
-    const t=i/N;
-    const cx=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
-    const cy=Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h);
-    for(let dy=-zoneHalf;dy<=zoneHalf;dy+=dyStep){
-      const sy=Math.max(0,Math.min(h-1,cy+dy));
-      pts.push({px:Math.max(0,Math.min(w-1,cx)),py:sy});
-    }
-  }
-  return pts;
+// 計算感應帶矩形：以終點線為中軸，法線方向展開 ±40% 畫面高
+function buildTripRect(vw, vh){
+  // 終點線兩端點（原始座標）
+  const ax=FL.x1*vw, ay=FL.y1*vh;
+  const bx=FL.x2*vw, by=FL.y2*vh;
+  const len=Math.sqrt((bx-ax)**2+(by-ay)**2)||1;
+  // 法向量（垂直於終點線）
+  const nx=-(by-ay)/len, ny=(bx-ax)/len;
+  // 感應帶半寬 = 40% 畫面高
+  const half=Math.floor(vh*0.40);
+  // 感應帶沿法線方向的四個角
+  const pts=[
+    [ax+nx*half, ay+ny*half],
+    [bx+nx*half, by+ny*half],
+    [bx-nx*half, by-ny*half],
+    [ax-nx*half, ay-ny*half],
+  ];
+  // 取外接矩形（確保含蓋整個帶形區域）
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  const rx=Math.max(0,Math.floor(Math.min(...xs)));
+  const ry=Math.max(0,Math.floor(Math.min(...ys)));
+  const rw=Math.min(vw-rx, Math.ceil(Math.max(...xs))-rx);
+  const rh=Math.min(vh-ry, Math.ceil(Math.max(...ys))-ry);
+  return {x:rx, y:ry, w:Math.max(1,rw), h:Math.max(1,rh)};
 }
+
+// 靜態背景基線（矩形感應帶區域）
+let baselineRoi=null; // Float32Array（平均 RGB）
 
 function startVisionLoop(){
   const video=document.getElementById('viewfinder');
   const vc=document.getElementById('vis-canvas');
   const ctx=vc.getContext('2d',{willReadFrequently:true});
-
-  // 取一個 N×1 的感應帶行像素，用於差分
-  let prevBand=null;   // Uint8ClampedArray
-  let motionHistory=[]; // 最近 5 幀的動態值（時間平滑）
-  const HIST=5;
+  let baselineFrames=0;
+  let baselineAccum=null; // Float32Array 累加
 
   function frame(){
     if(video.paused||video.ended){visRAF=requestAnimationFrame(frame);return}
 
-    // 確認 vis-canvas 尺寸
-    if(vc.width!==video.videoWidth||vc.height!==video.videoHeight){
-      vc.width=video.videoWidth||640;
-      vc.height=video.videoHeight||480;
-      baselineFrame=null;baselineReady=false;baselineCnt=0;
-      tripwirePoints=null; prevBand=null; motionHistory=[];
-    }
-    if(!vc.width||!vc.height){visRAF=requestAnimationFrame(frame);return}
-    ctx.drawImage(video,0,0,vc.width,vc.height);
+    const vw=video.videoWidth||0, vh=video.videoHeight||0;
+    if(!vw||!vh){visRAF=requestAnimationFrame(frame);return}
 
-    // 計時未開始 → 持續更新靜態背景基線
+    // 調整 vis-canvas 尺寸
+    if(vc.width!==vw||vc.height!==vh){
+      vc.width=vw; vc.height=vh;
+      baselineRoi=null; baselineAccum=null;
+      baselineFrames=0; tripRect=null;
+      baselineReady=false; baselineCnt=0;
+    }
+    ctx.drawImage(video,0,0,vw,vh);
+
+    // 重建感應帶矩形（終點線改變後 tripRect=null）
+    if(!tripRect) tripRect=buildTripRect(vw,vh);
+    const {x:rx,y:ry,w:rw,h:rh}=tripRect;
+
+    // ── 計時未開始：持續累積靜態基線 ──
     if(!isRunning){
-      baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);
-      tripwirePoints=null; prevBand=null; motionHistory=[];
-      visRAF=requestAnimationFrame(frame);return;
-    }
-
-    // 開始後收集 BASELINE_N 幀穩定基線
-    if(!baselineReady){
-      if(baselineCnt<BASELINE_N){
-        if(!baselineFrame) baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);
-        baselineCnt++;
-      }else{ baselineReady=true; }
-      visRAF=requestAnimationFrame(frame);return;
-    }
-
-    // 建立感應帶採樣點（首次或終點線改變後重建）
-    if(!tripwirePoints) tripwirePoints=buildTripwirePoints(vc.width,vc.height);
-
-    // ── 擷取感應帶像素 ──
-    const band=new Uint8ClampedArray(tripwirePoints.length*3);
-    for(let i=0;i<tripwirePoints.length;i++){
-      const {px,py}=tripwirePoints[i];
-      const bi=(py*vc.width+px)*4;
-      band[i*3]  =vc.width>0?ctx.getImageData(px,py,1,1).data[0]:0;
-      band[i*3+1]=vc.width>0?ctx.getImageData(px,py,1,1).data[1]:0;
-      band[i*3+2]=vc.width>0?ctx.getImageData(px,py,1,1).data[2]:0;
-    }
-
-    // ── 計算動態量（與前一幀差分）──
-    let motion=0,groundCnt=0;
-    if(prevBand&&prevBand.length===band.length){
-      for(let i=0;i<tripwirePoints.length;i++){
-        const r=band[i*3],g=band[i*3+1],b=band[i*3+2];
-        const dr=Math.abs(r-prevBand[i*3]);
-        const dg=Math.abs(g-prevBand[i*3+1]);
-        const db=Math.abs(b-prevBand[i*3+2]);
-        motion+=dr+dg+db;
-        if(isGroundColor(r,g,b)) groundCnt++;
+      const roi=ctx.getImageData(rx,ry,rw,rh);
+      if(!baselineAccum) baselineAccum=new Float32Array(roi.data.length);
+      for(let i=0;i<roi.data.length;i++) baselineAccum[i]+=roi.data[i];
+      baselineFrames++;
+      // 每 30 幀更新一次基線（~1秒）
+      if(baselineFrames>=30){
+        baselineRoi=new Float32Array(baselineAccum.length);
+        for(let i=0;i<baselineAccum.length;i++) baselineRoi[i]=baselineAccum[i]/baselineFrames;
+        baselineAccum=null; baselineFrames=0;
       }
-      motion/=tripwirePoints.length;
+      visRAF=requestAnimationFrame(frame);return;
     }
-    prevBand=band;
 
-    // ── 時間平滑（5幀移動平均）──
-    motionHistory.push(motion);
-    if(motionHistory.length>HIST) motionHistory.shift();
-    const smoothMotion=motionHistory.reduce((a,b)=>a+b,0)/motionHistory.length;
+    // ── 計時開始：若還沒有基線，先建一幀 ──
+    if(!baselineRoi){
+      const roi=ctx.getImageData(rx,ry,rw,rh);
+      baselineRoi=new Float32Array(roi.data.length);
+      for(let i=0;i<roi.data.length;i++) baselineRoi[i]=roi.data[i];
+    }
 
-    // ── 動態閾值（基於靜態背景雜訊）──
-    const bgNoise=calcBgNoise(ctx,vc.width,vc.height);
-    const threshold=Math.max(18, bgNoise*1.5);
+    // ── ★ 核心：一次取整個感應帶矩形的像素 ──
+    const curData=ctx.getImageData(rx,ry,rw,rh).data;
+    const n=rw*rh;
+    let sumDiff=0, groundCnt=0;
+    for(let i=0;i<curData.length;i+=4){
+      const r=curData[i], g=curData[i+1], b=curData[i+2];
+      // ★ 靜態基線差分（而非相鄰幀差分）
+      const dr=Math.abs(r-baselineRoi[i]);
+      const dg=Math.abs(g-baselineRoi[i+1]);
+      const db=Math.abs(b-baselineRoi[i+2]);
+      sumDiff+=dr+dg+db;
+      if(isGroundColor(r,g,b)) groundCnt++;
+    }
+    const avgDiff=n>0?sumDiff/n:0;
 
-    // ── 地面否決：只有 90% 以上都是地面色才否決 ──
-    const groundRatio=tripwirePoints.length>0?groundCnt/tripwirePoints.length:0;
+    // 地面否決（90% 以上是地面色才否決）
+    const groundRatio=n>0?groundCnt/n:0;
     const rejected=groundLearned&&groundRatio>=0.90;
+
+    // ★ 動態閾值：靜態基線的平均差 × 2.5
+    //   計時剛開始時 bgLevel ≈ 0~5，有學生時 ≈ 15~20
+    //   設 bgLevel*2.5 最小值 8，足以區分
+    const bgLevel=Math.min(5, avgDiff); // 剛開始估算背景雜訊上限
+    const threshold=Math.max(8, bgLevel*2.5);
+
+    // 觸發（1幀即可，靠靜態基線天然抗雜訊）
+    if(!cooldown&&!rejected&&avgDiff>threshold){
+      onCrossing(ctx,vc);
+    }
 
     // ── 狀態顯示 ──
     const st=document.getElementById('det-status');
     const gl=groundLearned?'跑道✓':'未學跑道';
-    const pts=tripwirePoints.length;
-    st.style.color=cooldown?'#ff9800':rejected?'#ff5252':smoothMotion>threshold?'#00e676':'var(--muted)';
+    st.style.color=cooldown?'#ff9800':rejected?'#ff5252':avgDiff>threshold?'#00e676':'var(--muted)';
     st.textContent=rejected
       ?`⛔地面色${Math.round(groundRatio*100)}%否決`
-      :`動:${smoothMotion.toFixed(1)} 閾:${threshold.toFixed(1)} 地:${Math.round(groundRatio*100)}% ${pts}點${cooldown?' ⏳':''}  ${gl}`;
-
-    // ── 觸發判斷：連續兩幀超閾才觸發（避免單幀雜訊）──
-    if(!cooldown&&!rejected){
-      motionAboveCount = smoothMotion>threshold ? (motionAboveCount||0)+1 : 0;
-      if(motionAboveCount>=2){
-        motionAboveCount=0;
-        onCrossing(ctx,vc);
-      }
-    } else { motionAboveCount=0; }
+      :`差分:${avgDiff.toFixed(1)} 閾:${threshold.toFixed(1)} 地:${Math.round(groundRatio*100)}%${cooldown?' ⏳':''} ${gl}`;
 
     visRAF=requestAnimationFrame(frame);
   }
   visRAF=requestAnimationFrame(frame);
-}
-
-// 背景雜訊計算（對比基線）
-function calcBgNoise(ctx,w,h){
-  if(!baselineFrame||!tripwirePoints||!tripwirePoints.length) return 0;
-  let diff=0;
-  // 只取 1/4 的點算雜訊，減少運算
-  const step=Math.max(1,Math.floor(tripwirePoints.length/20));
-  let cnt=0;
-  for(let i=0;i<tripwirePoints.length;i+=step){
-    const {px,py}=tripwirePoints[i];
-    try{
-      const cur=ctx.getImageData(px,py,1,1).data;
-      const bi=(py*w+px)*4;
-      diff+=Math.abs(cur[0]-baselineFrame.data[bi])+
-            Math.abs(cur[1]-baselineFrame.data[bi+1])+
-            Math.abs(cur[2]-baselineFrame.data[bi+2]);
-      cnt++;
-    }catch{}
-  }
-  return cnt>0?diff/cnt:0;
 }
 
 function onCrossing(ctx,vc){
@@ -1304,23 +1287,20 @@ function onCrossing(ctx,vc){
   pushAIItem(zc);
 }
 
-// 擷取越線區顏色 — 從感應帶中排除地面色後取平均，代表號碼衣主色
+// 擷取越線區顏色 — 從矩形感應帶取樣，排除地面色後取平均
 function getZoneColor(ctx,vc){
-  if(!tripwirePoints||!tripwirePoints.length) return null;
-  let rs=0,gs=0,bs=0,n=0;
-  // 只取感應帶中段（排除上下各 20% 的邊緣點，減少背景干擾）
-  const start=Math.floor(tripwirePoints.length*0.2);
-  const end=Math.floor(tripwirePoints.length*0.8);
-  for(let i=start;i<end;i++){
-    const {px,py}=tripwirePoints[i];
-    try{
-      const d=ctx.getImageData(px,py,1,1).data;
-      if(!isGroundColor(d[0],d[1],d[2])){
-        rs+=d[0];gs+=d[1];bs+=d[2];n++;
+  if(!tripRect) return null;
+  const {x,y,w,h}=tripRect;
+  try{
+    const d=ctx.getImageData(x,y,w,h).data;
+    let rs=0,gs=0,bs=0,n=0;
+    for(let i=0;i<d.length;i+=4){
+      if(!isGroundColor(d[i],d[i+1],d[i+2])){
+        rs+=d[i];gs+=d[i+1];bs+=d[i+2];n++;
       }
-    }catch{}
-  }
-  if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
+    }
+    if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
+  }catch{}
   return null;
 }
 
