@@ -34,13 +34,7 @@ textarea{resize:vertical}
 .btn-sec{width:100%;padding:9px;background:var(--card);border:1px solid var(--accent2);
   border-radius:8px;color:var(--accent2);font-size:0.9rem;font-weight:700;cursor:pointer;margin-top:5px}
 
-/* ── CAMERA PREVIEW in setup ── */
-#cam-preview-wrap{margin-top:8px;position:relative;border-radius:8px;overflow:hidden;
-  background:#000;display:none;border:2px solid var(--border)}
-#cam-preview-video{width:100%;display:block;max-height:180px;object-fit:cover}
-#cam-preview-info{position:absolute;bottom:0;left:0;right:0;
-  background:rgba(0,0,0,0.65);padding:3px 8px;font-size:0.68rem;color:var(--muted);
-  display:flex;justify-content:space-between}
+/* camera preview CSS removed - selector moved to scanner modal */
 
 /* ── SCANNER MODAL ── */
 #scanner-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);
@@ -244,22 +238,8 @@ textarea{resize:vertical}
     </select>
   </div>
 
-  <!-- 相機選擇 + 即時預覽 -->
-  <div class="setup-group">
-    <div class="gtitle">📷 主攝影機（越線偵測）</div>
-    <select id="sel-cam" onchange="previewCam(this.value)"></select>
-    <!-- ★ 即時預覽視窗 -->
-    <div id="cam-preview-wrap">
-      <video id="cam-preview-video" autoplay playsinline muted></video>
-      <div id="cam-preview-info">
-        <span id="cam-preview-name">—</span>
-        <span id="cam-preview-res">—</span>
-      </div>
-    </div>
-    <p style="font-size:0.72rem;color:var(--muted);margin-top:6px">
-      切換選項即可預覽各鏡頭畫面；選好後繼續設定即可。
-    </p>
-  </div>
+  <!-- 隱藏的 sel-cam，測驗時用；實際選擇在 scanner modal 完成 -->
+  <select id="sel-cam" style="display:none"></select>
 
   <!-- 號碼衣學習 -->
   <div class="setup-group">
@@ -277,9 +257,20 @@ textarea{resize:vertical}
 <div id="scanner-modal">
   <div class="scan-title">📋 登錄受測學生號碼</div>
   <p style="color:var(--muted);font-size:0.8rem;text-align:center;max-width:420px">
-    對準學生號碼衣 → 點「📸 擷取」→ 輸入號碼 → 點「✔ 儲存」<br>
-    <span style="color:var(--yellow)">同時記錄號碼衣顏色特徵，供測驗時辨識使用</span>
+    ① 選擇鏡頭 → ② 對準號碼衣 → ③ 點「📸 擷取」→ ④ 輸入號碼 → ⑤ 點「✔ 儲存」<br>
+    <span style="color:var(--yellow)">完成後此鏡頭也將用於測驗越線偵測</span>
   </p>
+
+  <!-- ★ 鏡頭選擇 + 即時預覽（在 scanner modal 內） -->
+  <div id="scan-cam-selector" style="width:100%;max-width:420px;background:var(--panel);
+    border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+    <div style="font-size:0.72rem;color:var(--accent);font-weight:700;letter-spacing:1px">📷 選擇鏡頭</div>
+    <select id="scan-cam-sel" onchange="switchScanCam(this.value)"
+      style="margin-top:0;font-size:0.88rem;padding:7px 10px">
+      <option value="">載入中…</option>
+    </select>
+    <div id="scan-cam-res" style="font-size:0.68rem;color:var(--muted);text-align:right"></div>
+  </div>
 
   <div id="scan-cam-box">
     <video id="scan-video" autoplay playsinline muted></video>
@@ -423,6 +414,7 @@ let lineEditMode=false, lineDrawing=false, lineStart=null, tempFL=null;
 let lastPixels=null, cooldown=false;
 let baselineFrame=null, baselineReady=false, baselineCnt=0;
 const BASELINE_N=30;
+let motionAboveCount=0; // 連續超閾幀數（防單幀雜訊觸發）
 
 // 地面色 clusters
 let groundClusters=[]; // [{r,g,b,tol}]
@@ -437,126 +429,131 @@ let pendingCapture=null; // {bibHex,txtHex}
 // ════════════════════════════════════════════════
 // 頁面載入 — 掃描可用鏡頭
 // ════════════════════════════════════════════════
+// 裝置清單快取（openScanner 使用）
+let cachedCamDevices=[];
+
 window.addEventListener('load', async ()=>{
-  const sel=document.getElementById('sel-cam');
+  // 只做權限請求，不開啟任何預覽流
   try{
     const tmp=await navigator.mediaDevices.getUserMedia({video:true});
     tmp.getTracks().forEach(t=>t.stop());
     const devs=await navigator.mediaDevices.enumerateDevices();
-    const cams=devs.filter(d=>d.kind==='videoinput');
-    cams.forEach((d,i)=>{
-      const o=document.createElement('option');
-      o.value=d.deviceId;
-      o.text=d.label||`攝影機 ${i+1}`;
-      sel.appendChild(o);
-    });
-    if(cams.length>0) previewCam(sel.value);
-  }catch{
-    sel.innerHTML='<option value="none">無相機權限</option>';
-  }
+    cachedCamDevices=devs.filter(d=>d.kind==='videoinput');
+  }catch{ /* 等到 openScanner 再處理 */ }
 });
 
-// ════════════════════════════════════════════════
-// ★ 修改3：鏡頭預覽
-// ════════════════════════════════════════════════
-async function previewCam(deviceId){
-  if(!deviceId||deviceId==='none') return;
-  const wrap=document.getElementById('cam-preview-wrap');
-  const video=document.getElementById('cam-preview-video');
-  const nameEl=document.getElementById('cam-preview-name');
-  const resEl=document.getElementById('cam-preview-res');
-
-  if(previewStream) previewStream.getTracks().forEach(t=>t.stop());
-  wrap.style.display='block';
-  nameEl.textContent='連線中…';
-  resEl.textContent='';
-
-  try{
-    previewStream=await navigator.mediaDevices.getUserMedia({
-      video:{
-        deviceId:{exact:deviceId},
-        width:{ideal:1280},height:{ideal:720},
-        // ★ 修改2：自動對焦
-        focusMode:'continuous'
-      }
-    });
-    video.srcObject=previewStream;
-    video.onloadedmetadata=()=>{
-      const t=previewStream.getVideoTracks()[0];
-      const s=t.getSettings();
-      nameEl.textContent=t.label||'攝影機';
-      resEl.textContent=`${s.width||'?'}×${s.height||'?'}`;
-    };
-  }catch(err){
-    nameEl.textContent='無法開啟此鏡頭';
-    resEl.textContent=err.name;
-  }
-}
+// previewCam 已移至 scanner modal 內的 switchScanCam
+function previewCam(){}
 
 // ════════════════════════════════════════════════
-// ★ 修改1：號碼衣掃描器（完整改版）
+// 號碼衣掃描器
 // ════════════════════════════════════════════════
-function openScanner(){
+async function openScanner(){
+  // 重置 UI
   document.getElementById('scanner-modal').classList.add('active');
   document.getElementById('color-result-panel').classList.remove('show');
   document.getElementById('cap-preview-box').style.display='none';
   document.getElementById('scan-saved-msg').style.display='none';
   document.getElementById('scan-bib-input').value='';
   pendingCapture=null;
-  startScanCam();
+
+  // ★ 在 modal 內列舉並填入鏡頭清單
+  const sel=document.getElementById('scan-cam-sel');
+  sel.innerHTML='';
+
+  let devices=cachedCamDevices;
+  if(!devices.length){
+    // 尚未取得清單，重新請求
+    try{
+      const tmp=await navigator.mediaDevices.getUserMedia({video:true});
+      tmp.getTracks().forEach(t=>t.stop());
+      const all=await navigator.mediaDevices.enumerateDevices();
+      devices=all.filter(d=>d.kind==='videoinput');
+      cachedCamDevices=devices;
+    }catch(e){
+      sel.innerHTML='<option value="">無相機權限</option>';
+      return;
+    }
+  }
+  if(!devices.length){
+    sel.innerHTML='<option value="">找不到鏡頭</option>';
+    return;
+  }
+  devices.forEach((d,i)=>{
+    const o=document.createElement('option');
+    o.value=d.deviceId;
+    o.text=d.label||`攝影機 ${i+1}`;
+    sel.appendChild(o);
+  });
+
+  // 優先選上次用過的鏡頭
+  const lastId=document.getElementById('sel-cam').value;
+  if(lastId&&[...sel.options].some(o=>o.value===lastId)) sel.value=lastId;
+
+  // 開啟選定的鏡頭
+  await startScanCam(sel.value);
 }
 
-async function startScanCam(){
+// 切換鏡頭（下拉選單 onchange）
+async function switchScanCam(deviceId){
+  if(scannerStream){ scannerStream.getTracks().forEach(t=>t.stop()); scannerStream=null; }
+  await startScanCam(deviceId);
+}
+
+async function startScanCam(deviceId){
   const video=document.getElementById('scan-video');
   const roiCanvas=document.getElementById('roi-canvas');
+  const resEl=document.getElementById('scan-cam-res');
 
-  // ★ 步驟1：先用最基本的 constraint 開啟相機（保證所有裝置都能成功）
-  //    不加 focusMode/zoom 等可能不相容的參數，避免整個 getUserMedia 失敗
-  const basicConstraints=[
-    // 優先後鏡頭高解析度
-    {video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}},
-    // 備用：後鏡頭標準
-    {video:{facingMode:'environment'}},
-    // 最終備用：任何鏡頭
-    {video:true}
-  ];
+  // 停止舊的串流
+  if(scannerStream){ scannerStream.getTracks().forEach(t=>t.stop()); scannerStream=null; }
+
+  // ★ 三層備用 constraint
+  const constraints=[];
+  if(deviceId){
+    constraints.push({video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}}});
+    constraints.push({video:{deviceId:{exact:deviceId}}});
+  }
+  constraints.push({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
+  constraints.push({video:{facingMode:'environment'}});
+  constraints.push({video:true});
 
   let stream=null;
-  for(const c of basicConstraints){
+  for(const c of constraints){
     try{ stream=await navigator.mediaDevices.getUserMedia(c); break; }
     catch{ continue; }
   }
   if(!stream){
-    alert('無法開啟相機，請確認已授予相機權限！');
-    closeScanner();
+    if(resEl) resEl.textContent='❌ 無法開啟，請檢查相機權限';
     return;
   }
   scannerStream=stream;
   video.srcObject=stream;
-  video.onloadedmetadata=()=>{
-    video.play();
-    // ROI canvas 尺寸跟隨 video 顯示尺寸
-    roiCanvas.width=video.offsetWidth||400;
-    roiCanvas.height=video.offsetHeight||260;
-    drawROI(roiCanvas);
-  };
-  video.onresize=()=>{
-    roiCanvas.width=video.offsetWidth||400;
-    roiCanvas.height=video.offsetHeight||260;
-    drawROI(roiCanvas);
-  };
 
-  // ★ 步驟2：相機開啟成功後，嘗試套用進階對焦（失敗不影響主流程）
+  await new Promise(res=>{
+    video.onloadedmetadata=()=>{ video.play(); res(); };
+    setTimeout(res,3000); // 逾時保護
+  });
+
+  // 顯示解析度
   const track=stream.getVideoTracks()[0];
+  if(track&&resEl){
+    const s=track.getSettings();
+    resEl.textContent=`${s.width||'?'}×${s.height||'?'} · ${track.label||''}`;
+  }
+
+  // 套用自動對焦（失敗不影響）
   if(track){
-    const caps=track.getCapabilities?.() || {};
-    const adv={};
-    if(caps.focusMode?.includes('continuous')) adv.focusMode='continuous';
-    if(Object.keys(adv).length>0){
-      try{ await track.applyConstraints({advanced:[adv]}); }
-      catch(e){ console.log('對焦設定不支援，略過:',e.message); }
+    const caps=track.getCapabilities?.()??{};
+    if(caps.focusMode?.includes('continuous')){
+      try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch{}
     }
   }
+
+  // ROI canvas
+  roiCanvas.width=video.offsetWidth||400;
+  roiCanvas.height=video.offsetHeight||260;
+  drawROI(roiCanvas);
 }
 
 // 設定 ROI canvas（繪製對焦框與暗化遮罩）
@@ -816,11 +813,23 @@ function deleteBibProfile(num){
 
 function closeScanner(){
   if(scannerStream){ scannerStream.getTracks().forEach(t=>t.stop()); scannerStream=null; }
-  // 清除對焦事件
   if(_tapFocusHandler){
     const box=document.getElementById('scan-cam-box');
-    box.removeEventListener('click',_tapFocusHandler);
+    if(box) box.removeEventListener('click',_tapFocusHandler);
     _tapFocusHandler=null;
+  }
+  // ★ 把在 scanner 選定的鏡頭同步到隱藏的 sel-cam，供測驗使用
+  const scSel=document.getElementById('scan-cam-sel');
+  const mainSel=document.getElementById('sel-cam');
+  if(scSel&&scSel.value){
+    // 若 sel-cam 還沒有這個選項，先加入
+    if(![...mainSel.options].some(o=>o.value===scSel.value)){
+      const o=document.createElement('option');
+      o.value=scSel.value;
+      o.text=scSel.options[scSel.selectedIndex]?.text||scSel.value;
+      mainSel.appendChild(o);
+    }
+    mainSel.value=scSel.value;
   }
   document.getElementById('scanner-modal').classList.remove('active');
 }
@@ -932,12 +941,36 @@ function drawFL(draft){
     ctx.restore();
   }
 
+  // ★ 感應帶範圍視覺化（顯示實際偵測區域）
+  if(!lineEditMode){
+    const zoneHalf=h*0.25;
+    // 計算感應帶四個角
+    const dx=(x2-x1), dy=(y2-y1), len=Math.sqrt(dx*dx+dy*dy)||1;
+    const nx=-dy/len, ny=dx/len; // 法向量（垂直於終點線）
+    const p1x=x1+nx*zoneHalf, p1y=y1+ny*zoneHalf;
+    const p2x=x2+nx*zoneHalf, p2y=y2+ny*zoneHalf;
+    const p3x=x2-nx*zoneHalf, p3y=y2-ny*zoneHalf;
+    const p4x=x1-nx*zoneHalf, p4y=y1-ny*zoneHalf;
+    ctx.save();
+    ctx.fillStyle='rgba(0,230,118,0.10)';
+    ctx.beginPath();
+    ctx.moveTo(p1x,p1y);ctx.lineTo(p2x,p2y);
+    ctx.lineTo(p3x,p3y);ctx.lineTo(p4x,p4y);
+    ctx.closePath();ctx.fill();
+    // 虛線邊界
+    ctx.strokeStyle='rgba(0,230,118,0.45)';
+    ctx.lineWidth=1;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(p1x,p1y);ctx.lineTo(p2x,p2y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p4x,p4y);ctx.lineTo(p3x,p3y);ctx.stroke();
+    ctx.restore();
+  }
+
   // 終點線標籤
   const mx=(x1+x2)/2,my=(y1+y2)/2-8;
   ctx.save();
   ctx.font='bold 10px sans-serif';
   ctx.fillStyle=lineEditMode?'#5c35ff':'rgba(255,30,30,0.9)';
-  ctx.fillText('⬛ 終點線',mx-28,my);
+  ctx.fillText(lineEditMode?'⬛ 終點線':'⬛ 終點線 ←感應帶→',mx-(lineEditMode?28:60),my);
   ctx.restore();
 }
 
@@ -1017,6 +1050,7 @@ function saveFinishLine(){
 function resetFinishLine(){
   FL={x1:0.5,y1:0,x2:0.5,y2:1};tempFL=null;
   groundLearned=false;groundClusters=[];
+  tripwirePoints=null; motionAboveCount=0;
   document.getElementById('ground-strip').classList.remove('show');
   drawFL();
 }
@@ -1061,6 +1095,7 @@ function autoLearnGround(){
 
   // 沿終點線的色彩通常有兩群：跑道色 + 白色線條（若有）
   const clusters=kMeans2(samples);
+  tripwirePoints=null; // ★ 終點線改變，重建感應帶
   groundClusters=clusters
     .filter(c=>c&&c.r!==undefined)
     .map(c=>({
@@ -1095,111 +1130,161 @@ function isGroundColor(r,g,b){
 }
 
 // ════════════════════════════════════════════════
-// 越線偵測主迴圈
+// 越線偵測主迴圈 — 「感應帶」策略
+//
+// ★ 核心改變：
+//   終點線只定義「感應帶」的中心軸
+//   實際偵測區域 = 沿終點線方向、垂直展開的矩形帶狀區
+//   感應帶寬度 = 畫面高度的 50%（含人體軀幹）
+//   這樣不管終點線在地面哪個位置，整個人體都在偵測範圍內
 // ════════════════════════════════════════════════
+
+// 感應帶取樣快取（避免每幀重新計算採樣點座標）
+let tripwirePoints=null; // [{px,py}]
+
+function buildTripwirePoints(w,h){
+  // 沿終點線方向取 N 個等分點，每個點向垂直方向延伸 ±zoneHalf
+  const N=20; // 沿線方向分段數
+  const zoneHalf=Math.floor(h*0.25); // 感應帶半寬 = 25% 畫面高（上下各 25% = 共 50%）
+  const dyStep=4; // 垂直方向每 4px 取一個點
+  const pts=[];
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const cx=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
+    const cy=Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h);
+    for(let dy=-zoneHalf;dy<=zoneHalf;dy+=dyStep){
+      const sy=Math.max(0,Math.min(h-1,cy+dy));
+      pts.push({px:Math.max(0,Math.min(w-1,cx)),py:sy});
+    }
+  }
+  return pts;
+}
+
 function startVisionLoop(){
   const video=document.getElementById('viewfinder');
   const vc=document.getElementById('vis-canvas');
   const ctx=vc.getContext('2d',{willReadFrequently:true});
 
+  // 取一個 N×1 的感應帶行像素，用於差分
+  let prevBand=null;   // Uint8ClampedArray
+  let motionHistory=[]; // 最近 5 幀的動態值（時間平滑）
+  const HIST=5;
+
   function frame(){
     if(video.paused||video.ended){visRAF=requestAnimationFrame(frame);return}
-    if(vc.width!==video.videoWidth){
-      vc.width=video.videoWidth;vc.height=video.videoHeight;
-      baselineFrame=null;baselineReady=false;baselineCnt=0;
-    }
-    ctx.drawImage(video,0,0);
 
+    // 確認 vis-canvas 尺寸
+    if(vc.width!==video.videoWidth||vc.height!==video.videoHeight){
+      vc.width=video.videoWidth||640;
+      vc.height=video.videoHeight||480;
+      baselineFrame=null;baselineReady=false;baselineCnt=0;
+      tripwirePoints=null; prevBand=null; motionHistory=[];
+    }
+    if(!vc.width||!vc.height){visRAF=requestAnimationFrame(frame);return}
+    ctx.drawImage(video,0,0,vc.width,vc.height);
+
+    // 計時未開始 → 持續更新靜態背景基線
     if(!isRunning){
       baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);
+      tripwirePoints=null; prevBand=null; motionHistory=[];
       visRAF=requestAnimationFrame(frame);return;
     }
+
+    // 開始後收集 BASELINE_N 幀穩定基線
     if(!baselineReady){
-      if(baselineCnt<BASELINE_N){if(!baselineFrame)baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);baselineCnt++;}
-      else baselineReady=true;
+      if(baselineCnt<BASELINE_N){
+        if(!baselineFrame) baselineFrame=ctx.getImageData(0,0,vc.width,vc.height);
+        baselineCnt++;
+      }else{ baselineReady=true; }
       visRAF=requestAnimationFrame(frame);return;
     }
 
-    const pixels=sampleLine(ctx,vc.width,vc.height);
-    if(lastPixels&&pixels.length===lastPixels.length){
-      let motion=0,groundCnt=0,validCnt=0;
-      for(let i=0;i<pixels.length;i+=4){
-        const r=pixels[i],g=pixels[i+1],b=pixels[i+2];
-        motion+=Math.abs(r-lastPixels[i])+Math.abs(g-lastPixels[i+1])+Math.abs(b-lastPixels[i+2]);
-        if(isGroundColor(r,g,b)) groundCnt++;
-        validCnt++;
-      }
-      const avgM=validCnt>0?motion/validCnt:0;
-      const bgNoise=bgDiff(vc.width,vc.height,ctx);
-      // ★ 閾值降低：max(25, bgNoise*1.8)，讓偵測更靈敏
-      const threshold=Math.max(25,bgNoise*1.8);
-      // ★ 地面否決閾值提高到 85%（之前 60% 太容易誤拒）
-      const groundRatio=validCnt>0?groundCnt/validCnt:0;
-      const rejected=groundLearned&&groundRatio>=0.85;
+    // 建立感應帶採樣點（首次或終點線改變後重建）
+    if(!tripwirePoints) tripwirePoints=buildTripwirePoints(vc.width,vc.height);
 
-      const st=document.getElementById('det-status');
-      const learned=groundLearned?`跑道色✓`:'未學跑道色';
-      st.style.color=cooldown?'#ff9800':rejected?'#ff5252':avgM>threshold?'#00e676':'var(--muted)';
-      st.textContent=rejected
-        ?`⛔地面色${Math.round(groundRatio*100)}%，忽略`
-        :`動:${Math.round(avgM)} 閾:${Math.round(threshold)} 地:${Math.round(groundRatio*100)}%${cooldown?' ⏳':''}  ${learned}`;
-
-      if(avgM>threshold&&!rejected&&!cooldown){
-        onCrossing(pixels,ctx,vc);
-      }
+    // ── 擷取感應帶像素 ──
+    const band=new Uint8ClampedArray(tripwirePoints.length*3);
+    for(let i=0;i<tripwirePoints.length;i++){
+      const {px,py}=tripwirePoints[i];
+      const bi=(py*vc.width+px)*4;
+      band[i*3]  =vc.width>0?ctx.getImageData(px,py,1,1).data[0]:0;
+      band[i*3+1]=vc.width>0?ctx.getImageData(px,py,1,1).data[1]:0;
+      band[i*3+2]=vc.width>0?ctx.getImageData(px,py,1,1).data[2]:0;
     }
-    lastPixels=new Uint8ClampedArray(pixels);
+
+    // ── 計算動態量（與前一幀差分）──
+    let motion=0,groundCnt=0;
+    if(prevBand&&prevBand.length===band.length){
+      for(let i=0;i<tripwirePoints.length;i++){
+        const r=band[i*3],g=band[i*3+1],b=band[i*3+2];
+        const dr=Math.abs(r-prevBand[i*3]);
+        const dg=Math.abs(g-prevBand[i*3+1]);
+        const db=Math.abs(b-prevBand[i*3+2]);
+        motion+=dr+dg+db;
+        if(isGroundColor(r,g,b)) groundCnt++;
+      }
+      motion/=tripwirePoints.length;
+    }
+    prevBand=band;
+
+    // ── 時間平滑（5幀移動平均）──
+    motionHistory.push(motion);
+    if(motionHistory.length>HIST) motionHistory.shift();
+    const smoothMotion=motionHistory.reduce((a,b)=>a+b,0)/motionHistory.length;
+
+    // ── 動態閾值（基於靜態背景雜訊）──
+    const bgNoise=calcBgNoise(ctx,vc.width,vc.height);
+    const threshold=Math.max(18, bgNoise*1.5);
+
+    // ── 地面否決：只有 90% 以上都是地面色才否決 ──
+    const groundRatio=tripwirePoints.length>0?groundCnt/tripwirePoints.length:0;
+    const rejected=groundLearned&&groundRatio>=0.90;
+
+    // ── 狀態顯示 ──
+    const st=document.getElementById('det-status');
+    const gl=groundLearned?'跑道✓':'未學跑道';
+    const pts=tripwirePoints.length;
+    st.style.color=cooldown?'#ff9800':rejected?'#ff5252':smoothMotion>threshold?'#00e676':'var(--muted)';
+    st.textContent=rejected
+      ?`⛔地面色${Math.round(groundRatio*100)}%否決`
+      :`動:${smoothMotion.toFixed(1)} 閾:${threshold.toFixed(1)} 地:${Math.round(groundRatio*100)}% ${pts}點${cooldown?' ⏳':''}  ${gl}`;
+
+    // ── 觸發判斷：連續兩幀超閾才觸發（避免單幀雜訊）──
+    if(!cooldown&&!rejected){
+      motionAboveCount = smoothMotion>threshold ? (motionAboveCount||0)+1 : 0;
+      if(motionAboveCount>=2){
+        motionAboveCount=0;
+        onCrossing(ctx,vc);
+      }
+    } else { motionAboveCount=0; }
+
     visRAF=requestAnimationFrame(frame);
   }
   visRAF=requestAnimationFrame(frame);
 }
 
-// 沿終點線全段取樣，每個點取線段垂直方向 ±lineWidth 寬度的平均
-// 不再限制中帶（那個限制反而會讓水平線的所有點都被跳過）
-function sampleLine(ctx,w,h){
-  const N=32,pixels=[];
-  for(let i=0;i<=N;i++){
-    const t=i/N;
-    const rx=(FL.x1+(FL.x2-FL.x1)*t)*w;
-    const ry=(FL.y1+(FL.y2-FL.y1)*t)*h;
-    const px=Math.max(0,Math.min(w-1,Math.floor(rx)));
-    const py=Math.max(0,Math.min(h-1,Math.floor(ry)));
-    // ★ 每個採樣點取 3 個垂直方向像素平均，提升抗雜訊能力
-    let r=0,g=0,b=0,cnt=0;
-    for(let dy=-1;dy<=1;dy++){
-      const sy=Math.max(0,Math.min(h-1,py+dy));
-      try{
-        const d=ctx.getImageData(px,sy,1,1).data;
-        r+=d[0];g+=d[1];b+=d[2];cnt++;
-      }catch{}
-    }
-    if(cnt>0) pixels.push(Math.round(r/cnt),Math.round(g/cnt),Math.round(b/cnt),255);
-    else pixels.push(0,0,0,255);
-  }
-  return pixels;
-}
-
-// 計算終點線上的背景雜訊（用來設動態閾值）
-function bgDiff(w,h,ctx){
-  if(!baselineFrame) return 0;
-  const N=16;
+// 背景雜訊計算（對比基線）
+function calcBgNoise(ctx,w,h){
+  if(!baselineFrame||!tripwirePoints||!tripwirePoints.length) return 0;
   let diff=0;
-  for(let i=0;i<=N;i++){
-    const t=i/N;
-    const px=Math.max(0,Math.min(w-1,Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w)));
-    const py=Math.max(0,Math.min(h-1,Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h)));
+  // 只取 1/4 的點算雜訊，減少運算
+  const step=Math.max(1,Math.floor(tripwirePoints.length/20));
+  let cnt=0;
+  for(let i=0;i<tripwirePoints.length;i+=step){
+    const {px,py}=tripwirePoints[i];
     try{
       const cur=ctx.getImageData(px,py,1,1).data;
       const bi=(py*w+px)*4;
       diff+=Math.abs(cur[0]-baselineFrame.data[bi])+
             Math.abs(cur[1]-baselineFrame.data[bi+1])+
             Math.abs(cur[2]-baselineFrame.data[bi+2]);
+      cnt++;
     }catch{}
   }
-  return diff/(N+1);
+  return cnt>0?diff/cnt:0;
 }
 
-function onCrossing(pixels,ctx,vc){
+function onCrossing(ctx,vc){
   // 閃綠線
   const fc=document.getElementById('fl-canvas');
   const fCtx=fc.getContext('2d');
@@ -1219,27 +1304,21 @@ function onCrossing(pixels,ctx,vc){
   pushAIItem(zc);
 }
 
-// 擷取越線區顏色 — 沿整條終點線，向兩側各展開 20px 的帶狀區域
+// 擷取越線區顏色 — 從感應帶中排除地面色後取平均，代表號碼衣主色
 function getZoneColor(ctx,vc){
-  const w=vc.width,h=vc.height;
-  // 沿終點線取 N 個點，每個點向垂直方向延伸 ±20px
-  const N=20;
+  if(!tripwirePoints||!tripwirePoints.length) return null;
   let rs=0,gs=0,bs=0,n=0;
-  for(let i=0;i<=N;i++){
-    const t=i/N;
-    const bx=Math.floor((FL.x1+(FL.x2-FL.x1)*t)*w);
-    const by=Math.floor((FL.y1+(FL.y2-FL.y1)*t)*h);
-    for(let dy=-20;dy<=20;dy+=4){
-      const sy=Math.max(0,Math.min(h-1,by+dy));
-      const sx=Math.max(0,Math.min(w-1,bx));
-      try{
-        const d=ctx.getImageData(sx,sy,1,1).data;
-        // 排除地面顏色
-        if(!isGroundColor(d[0],d[1],d[2])){
-          rs+=d[0];gs+=d[1];bs+=d[2];n++;
-        }
-      }catch{}
-    }
+  // 只取感應帶中段（排除上下各 20% 的邊緣點，減少背景干擾）
+  const start=Math.floor(tripwirePoints.length*0.2);
+  const end=Math.floor(tripwirePoints.length*0.8);
+  for(let i=start;i<end;i++){
+    const {px,py}=tripwirePoints[i];
+    try{
+      const d=ctx.getImageData(px,py,1,1).data;
+      if(!isGroundColor(d[0],d[1],d[2])){
+        rs+=d[0];gs+=d[1];bs+=d[2];n++;
+      }
+    }catch{}
   }
   if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
   return null;
