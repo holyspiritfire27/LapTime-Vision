@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>LapTime-Vision v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+TC:wght@400;700&display=swap');
 :root{
@@ -434,38 +433,47 @@ let corrUid=null;
 // 擷取暫存
 let pendingCapture=null; // {bibHex,txtHex}
 
-// Tesseract Worker（單例，避免重複初始化）
-let tessWorker=null;
-let tessReady=false;
-
-async function getTessWorker(){
-  if(tessWorker&&tessReady) return tessWorker;
+// ── Claude Vision OCR（取代 Tesseract，無 Worker 限制）──
+// 呼叫 Anthropic API，用 claude-sonnet-4-20250514 視覺模型辨識號碼衣上的數字
+async function claudeOCR(base64jpeg){
   try{
-    tessWorker=await Tesseract.createWorker('eng',1,{
-      logger:m=>{ if(m.status==='recognizing text') updateOCRProgress(Math.round(m.progress*100)); }
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:64,
+        messages:[{
+          role:'user',
+          content:[
+            {type:'image',source:{type:'base64',media_type:'image/jpeg',data:base64jpeg}},
+            {type:'text',text:'這是一張從跑步運動員胸口擷取的影像。請找出號碼衣上最顯眼的數字（1~3位整數），只輸出那個數字，不要任何說明或標點。看不到數字就輸出?。'}
+          ]
+        }]
+      })
     });
-    // 設定只辨識數字，大幅提升準確率與速度
-    await tessWorker.setParameters({
-      tessedit_char_whitelist:'0123456789',
-      tessedit_pageseg_mode:'7',  // PSM_SINGLE_LINE
-    });
-    tessReady=true;
+    if(!resp.ok) throw new Error(`API ${resp.status}`);
+    const data=await resp.json();
+    const raw=(data.content?.[0]?.text||'').trim();
+    // 只取數字
+    const num=raw.replace(/\D/g,'');
+    return num||null;
   }catch(e){
-    console.error('Tesseract 初始化失敗:',e);
-    tessWorker=null; tessReady=false;
+    console.error('Claude OCR 失敗:',e);
+    return null;
   }
-  return tessWorker;
 }
 
-function updateOCRProgress(pct){
-  const el=document.getElementById('ocr-status');
-  if(el) el.textContent=`🔄 OCR 辨識中… ${pct}%`;
+// Canvas → base64 JPEG（縮小到合理尺寸，節省 API 傳輸量）
+function canvasToBase64(canvas, maxW=640){
+  const scale=Math.min(1, maxW/canvas.width);
+  const tmp=document.createElement('canvas');
+  tmp.width=Math.round(canvas.width*scale);
+  tmp.height=Math.round(canvas.height*scale);
+  tmp.getContext('2d').drawImage(canvas,0,0,tmp.width,tmp.height);
+  // 去掉 data:image/jpeg;base64, 前綴
+  return tmp.toDataURL('image/jpeg',0.85).split(',')[1];
 }
-
-// 預先初始化（背景）
-window.addEventListener('load',()=>{
-  setTimeout(()=>getTessWorker().catch(()=>{}), 2000);
-});
 
 // ════════════════════════════════════════════════
 // 頁面載入 — 掃描可用鏡頭
@@ -690,48 +698,16 @@ async function tapFocus(e, video){
   }
 }
 
-// ── OCR 辨識號碼（對 ROI canvas 執行）──
+// ── OCR 辨識號碼（Claude Vision）──
 async function ocrBibNumber(srcCanvas, roiRect){
-  const worker=await getTessWorker();
-  if(!worker) return null;
-
-  // 1. 裁出 ROI 並放大 3× → 提升 OCR 準確率
+  // 裁出 ROI 區域送給 Claude 辨識
   const roi=roiRect;
-  const SCALE=3;
   const ocrCanvas=document.createElement('canvas');
-  ocrCanvas.width=roi.w*SCALE;
-  ocrCanvas.height=roi.h*SCALE;
+  ocrCanvas.width=roi.w; ocrCanvas.height=roi.h;
   const octx=ocrCanvas.getContext('2d');
-
-  // 2. 前處理：放大 + 對比增強 + 灰階
-  octx.filter='grayscale(1) contrast(2.5) brightness(1.1)';
-  octx.drawImage(srcCanvas,
-    roi.x,roi.y,roi.w,roi.h,
-    0,0,ocrCanvas.width,ocrCanvas.height);
-  octx.filter='none';
-
-  // 3. 嘗試正常方向 OCR
-  let result=await worker.recognize(ocrCanvas);
-  let text=(result.data.text||'').replace(/\D/g,'').trim();
-  const conf=result.data.confidence||0;
-
-  // 4. 若信心度低 (<50)，嘗試上下翻轉（號碼衣拍倒了）
-  if(!text||conf<50){
-    const flipCanvas=document.createElement('canvas');
-    flipCanvas.width=ocrCanvas.width; flipCanvas.height=ocrCanvas.height;
-    const fctx=flipCanvas.getContext('2d');
-    fctx.translate(ocrCanvas.width, ocrCanvas.height);
-    fctx.rotate(Math.PI);
-    fctx.drawImage(ocrCanvas,0,0);
-    const r2=await worker.recognize(flipCanvas);
-    const t2=(r2.data.text||'').replace(/\D/g,'').trim();
-    if(t2&&(r2.data.confidence||0)>conf){
-      text=t2;
-    }
-  }
-
-  console.log(`OCR結果: "${text}" 信心度:${conf}`);
-  return text||null;
+  octx.drawImage(srcCanvas, roi.x,roi.y,roi.w,roi.h, 0,0,roi.w,roi.h);
+  const b64=canvasToBase64(ocrCanvas, 480); // 縮到 480px 寬，夠 OCR 用
+  return await claudeOCR(b64);
 }
 
 // 擷取並分析號碼衣（顏色 + OCR）
@@ -1221,146 +1197,136 @@ function isGroundColor(r,g,b){
 
 // ════════════════════════════════════════════════
 // 越線偵測主迴圈
-// ════════════════════════════════════════════════
-//
-// ★ 核心設計：「矩形感應帶 + 整塊 getImageData + 靜態基線差分」
-//
-// 問題分析（從影片數據量化得出）：
-//   - 逐點 getImageData(1×1) 呼叫數百次 → 實際 fps 降至 5~8
-//   - 相鄰幀差分峰值只有 5.7，但閾值是 18 → 永遠偵測不到
-//   - 學生通過時只有 1~2 幀，fps=5 可能直接跳過
-//
-// 解法：
-//   A. 一次 getImageData 取整個矩形感應帶 → fps 恢復 25+
-//   B. 靜態基線差分（對比靜止背景）→ 信號強 3~4 倍
-//   C. 1 幀即觸發（靜態基線本身就過濾了雜訊）
-//   D. 感應帶沿終點線法線方向展開 ±40% 畫面高
+// 架構：矩形感應帶 + 靜態基線差分 + Motion BBox + 胸口 ROI OCR
 // ════════════════════════════════════════════════
 
-// 感應帶矩形快取 {x,y,w,h}（原始解析度座標）
 let tripRect=null;
+let baselineRoi=null;
 
-// 計算感應帶矩形：以終點線為中軸，法線方向展開 ±40% 畫面高
-function buildTripRect(vw, vh){
-  // 終點線兩端點（原始座標）
-  const ax=FL.x1*vw, ay=FL.y1*vh;
-  const bx=FL.x2*vw, by=FL.y2*vh;
+function buildTripRect(vw,vh){
+  const ax=FL.x1*vw,ay=FL.y1*vh,bx=FL.x2*vw,by=FL.y2*vh;
   const len=Math.sqrt((bx-ax)**2+(by-ay)**2)||1;
-  // 法向量（垂直於終點線）
   const nx=-(by-ay)/len, ny=(bx-ax)/len;
-  // 感應帶半寬 = 40% 畫面高
-  const half=Math.floor(vh*0.40);
-  // 感應帶沿法線方向的四個角
-  const pts=[
-    [ax+nx*half, ay+ny*half],
-    [bx+nx*half, by+ny*half],
-    [bx-nx*half, by-ny*half],
-    [ax-nx*half, ay-ny*half],
-  ];
-  // 取外接矩形（確保含蓋整個帶形區域）
-  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  const half=Math.floor(vh*0.42);
+  const xs=[ax+nx*half,bx+nx*half,bx-nx*half,ax-nx*half];
+  const ys=[ay+ny*half,by+ny*half,by-ny*half,ay-ny*half];
   const rx=Math.max(0,Math.floor(Math.min(...xs)));
   const ry=Math.max(0,Math.floor(Math.min(...ys)));
-  const rw=Math.min(vw-rx, Math.ceil(Math.max(...xs))-rx);
-  const rh=Math.min(vh-ry, Math.ceil(Math.max(...ys))-ry);
-  return {x:rx, y:ry, w:Math.max(1,rw), h:Math.max(1,rh)};
+  const rw=Math.min(vw-rx,Math.ceil(Math.max(...xs))-rx);
+  const rh=Math.min(vh-ry,Math.ceil(Math.max(...ys))-ry);
+  return{x:rx,y:ry,w:Math.max(1,rw),h:Math.max(1,rh)};
 }
-
-// 靜態背景基線（矩形感應帶區域）
-let baselineRoi=null; // Float32Array（平均 RGB）
 
 function startVisionLoop(){
   const video=document.getElementById('viewfinder');
   const vc=document.getElementById('vis-canvas');
   const ctx=vc.getContext('2d',{willReadFrequently:true});
-  let baselineFrames=0;
-  let baselineAccum=null; // Float32Array 累加
+  let baselineFrames=0, baselineAccum=null;
 
   function frame(){
     if(video.paused||video.ended){visRAF=requestAnimationFrame(frame);return}
-
-    const vw=video.videoWidth||0, vh=video.videoHeight||0;
+    const vw=video.videoWidth||0,vh=video.videoHeight||0;
     if(!vw||!vh){visRAF=requestAnimationFrame(frame);return}
-
-    // 調整 vis-canvas 尺寸
     if(vc.width!==vw||vc.height!==vh){
-      vc.width=vw; vc.height=vh;
-      baselineRoi=null; baselineAccum=null;
-      baselineFrames=0; tripRect=null;
-      baselineReady=false; baselineCnt=0;
+      vc.width=vw;vc.height=vh;
+      baselineRoi=null;baselineAccum=null;baselineFrames=0;
+      tripRect=null;baselineReady=false;baselineCnt=0;
     }
     ctx.drawImage(video,0,0,vw,vh);
-
-    // 重建感應帶矩形（終點線改變後 tripRect=null）
     if(!tripRect) tripRect=buildTripRect(vw,vh);
-    const {x:rx,y:ry,w:rw,h:rh}=tripRect;
+    const{x:rx,y:ry,w:rw,h:rh}=tripRect;
 
-    // ── 計時未開始：持續累積靜態基線 ──
     if(!isRunning){
+      // 持續累積靜止基線
       const roi=ctx.getImageData(rx,ry,rw,rh);
       if(!baselineAccum) baselineAccum=new Float32Array(roi.data.length);
       for(let i=0;i<roi.data.length;i++) baselineAccum[i]+=roi.data[i];
       baselineFrames++;
-      // 每 30 幀更新一次基線（~1秒）
       if(baselineFrames>=30){
         baselineRoi=new Float32Array(baselineAccum.length);
         for(let i=0;i<baselineAccum.length;i++) baselineRoi[i]=baselineAccum[i]/baselineFrames;
-        baselineAccum=null; baselineFrames=0;
+        baselineAccum=null;baselineFrames=0;
       }
       visRAF=requestAnimationFrame(frame);return;
     }
-
-    // ── 計時開始：若還沒有基線，先建一幀 ──
     if(!baselineRoi){
       const roi=ctx.getImageData(rx,ry,rw,rh);
       baselineRoi=new Float32Array(roi.data.length);
       for(let i=0;i<roi.data.length;i++) baselineRoi[i]=roi.data[i];
     }
 
-    // ── ★ 核心：一次取整個感應帶矩形的像素 ──
+    // ── 一次取整個感應帶矩形 ──
     const curData=ctx.getImageData(rx,ry,rw,rh).data;
     const n=rw*rh;
-    let sumDiff=0, groundCnt=0;
-    for(let i=0;i<curData.length;i+=4){
-      const r=curData[i], g=curData[i+1], b=curData[i+2];
-      // ★ 靜態基線差分（而非相鄰幀差分）
-      const dr=Math.abs(r-baselineRoi[i]);
-      const dg=Math.abs(g-baselineRoi[i+1]);
-      const db=Math.abs(b-baselineRoi[i+2]);
-      sumDiff+=dr+dg+db;
+    let sumDiff=0,groundCnt=0;
+    // ★ 同時收集「哪裡在動」的座標（Motion BBox）
+    let mxMin=rw,mxMax=0,myMin=rh,myMax=0,mCount=0;
+    const DIFF_THRESH=20; // 像素級別：超過此值才算「有動」
+
+    for(let i=0,pi=0;i<n;i++,pi+=4){
+      const r=curData[pi],g=curData[pi+1],b=curData[pi+2];
+      const dr=Math.abs(r-baselineRoi[pi]);
+      const dg=Math.abs(g-baselineRoi[pi+1]);
+      const db=Math.abs(b-baselineRoi[pi+2]);
+      const pixDiff=(dr+dg+db)/3;
+      sumDiff+=pixDiff;
       if(isGroundColor(r,g,b)) groundCnt++;
+      // ★ Motion BBox 收集
+      if(pixDiff>DIFF_THRESH){
+        const px=i%rw, py=Math.floor(i/rw);
+        if(px<mxMin) mxMin=px; if(px>mxMax) mxMax=px;
+        if(py<myMin) myMin=py; if(py>myMax) myMax=py;
+        mCount++;
+      }
     }
     const avgDiff=n>0?sumDiff/n:0;
-
-    // 地面否決（90% 以上是地面色才否決）
     const groundRatio=n>0?groundCnt/n:0;
     const rejected=groundLearned&&groundRatio>=0.90;
+    const threshold=Math.max(8,Math.min(5,avgDiff)*2.5);
 
-    // ★ 動態閾值：靜態基線的平均差 × 2.5
-    //   計時剛開始時 bgLevel ≈ 0~5，有學生時 ≈ 15~20
-    //   設 bgLevel*2.5 最小值 8，足以區分
-    const bgLevel=Math.min(5, avgDiff); // 剛開始估算背景雜訊上限
-    const threshold=Math.max(8, bgLevel*2.5);
-
-    // 觸發（1幀即可，靠靜態基線天然抗雜訊）
-    if(!cooldown&&!rejected&&avgDiff>threshold){
-      onCrossing(ctx,vc);
-    }
-
-    // ── 狀態顯示 ──
+    // 狀態
     const st=document.getElementById('det-status');
     const gl=groundLearned?'跑道✓':'未學跑道';
     st.style.color=cooldown?'#ff9800':rejected?'#ff5252':avgDiff>threshold?'#00e676':'var(--muted)';
     st.textContent=rejected
       ?`⛔地面色${Math.round(groundRatio*100)}%否決`
-      :`差分:${avgDiff.toFixed(1)} 閾:${threshold.toFixed(1)} 地:${Math.round(groundRatio*100)}%${cooldown?' ⏳':''} ${gl}`;
+      :`差:${avgDiff.toFixed(1)} 閾:${threshold.toFixed(1)} 動:${mCount}px${cooldown?' ⏳':''} ${gl}`;
 
+    if(!cooldown&&!rejected&&avgDiff>threshold&&mCount>50){
+      // ★ 把 Motion BBox 轉回全畫面座標傳給 onCrossing
+      const bbox={
+        x:rx+mxMin, y:ry+myMin,
+        w:Math.max(1,mxMax-mxMin), h:Math.max(1,myMax-myMin)
+      };
+      onCrossing(ctx,vc,bbox);
+    }
     visRAF=requestAnimationFrame(frame);
   }
   visRAF=requestAnimationFrame(frame);
 }
 
-function onCrossing(ctx,vc){
+// ── 清晰度評分（Laplacian 方差）──
+function calcSharpness(canvas,x,y,w,h){
+  const ctx2=canvas.getContext('2d',{willReadFrequently:true});
+  const img=ctx2.getImageData(x,y,w,h);
+  const d=img.data;
+  let variance=0,n=0;
+  for(let row=1;row<h-1;row++){
+    for(let col=1;col<w-1;col++){
+      const i=(row*w+col)*4;
+      const c=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
+      const l=(d[i-4]*77+d[i-3]*150+d[i-2]*29)>>8;
+      const r=(d[i+4]*77+d[i+5]*150+d[i+6]*29)>>8;
+      const t=(d[(i-w*4)]*77+d[(i-w*4)+1]*150+d[(i-w*4)+2]*29)>>8;
+      const b=(d[(i+w*4)]*77+d[(i+w*4)+1]*150+d[(i+w*4)+2]*29)>>8;
+      const lap=4*c-l-r-t-b;
+      variance+=lap*lap;n++;
+    }
+  }
+  return n>0?variance/n:0;
+}
+
+function onCrossing(ctx,vc,motionBbox){
   // 閃綠線
   const fc=document.getElementById('fl-canvas');
   const fCtx=fc.getContext('2d');
@@ -1375,145 +1341,126 @@ function onCrossing(ctx,vc){
   cooldown=true;
   setTimeout(()=>cooldown=false,2500);
 
-  // 截圖時間戳記（在非同步 OCR 前就記錄）
   const snapTs=difference;
-
-  // 連拍多幀 → 挑最清晰 → OCR
-  captureRunnerFrames(snapTs);
+  captureRunnerFrames(snapTs,motionBbox);
 }
 
-// ── 清晰度評分（Laplacian 方差）──
-function calcSharpness(canvas){
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  // 只取畫面上半部（人體，排除地面）
-  const h2=Math.floor(canvas.height*0.65);
-  const img=ctx.getImageData(0,0,canvas.width,h2);
+// ── 二值化前處理（提升號碼辨識率）──
+function preprocessBibCanvas(srcCanvas,sx,sy,sw,sh){
+  // 放大 + 灰階 + 對比 + 二值化
+  const SCALE=3;
+  const out=document.createElement('canvas');
+  out.width=sw*SCALE; out.height=sh*SCALE;
+  const octx=out.getContext('2d');
+  // Step1: 放大 + 對比增強
+  octx.filter='grayscale(1) contrast(3) brightness(1.1)';
+  octx.drawImage(srcCanvas,sx,sy,sw,sh,0,0,out.width,out.height);
+  octx.filter='none';
+  // Step2: 二值化（手動 threshold=140）
+  const img=octx.getImageData(0,0,out.width,out.height);
   const d=img.data;
-  const w=canvas.width;
-  let variance=0, n=0;
-  // Laplacian: |4*center - left - right - top - bottom|
-  for(let y=1;y<h2-1;y++){
-    for(let x=1;x<w-1;x++){
-      const i=(y*w+x)*4;
-      // 用灰階近似
-      const c=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
-      const l=(d[i-4]*77+d[i-3]*150+d[i-2]*29)>>8;
-      const r=(d[i+4]*77+d[i+5]*150+d[i+6]*29)>>8;
-      const t=(d[(i-w*4)]*77+d[(i-w*4)+1]*150+d[(i-w*4)+2]*29)>>8;
-      const b=(d[(i+w*4)]*77+d[(i+w*4)+1]*150+d[(i+w*4)+2]*29)>>8;
-      const lap=4*c-l-r-t-b;
-      variance+=lap*lap; n++;
-    }
+  for(let i=0;i<d.length;i+=4){
+    const v=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8; // 灰階
+    const bin=v>140?255:0;
+    d[i]=d[i+1]=d[i+2]=bin;
   }
-  return n>0?variance/n:0;
+  octx.putImageData(img,0,0);
+  return out;
 }
 
-// ── 連拍 8 幀 → 挑最清晰 → OCR 辨識 ──
-async function captureRunnerFrames(snapTs){
+// ── 連拍 5 幀（25ms 間隔）→ 挑最清晰 → 胸口 ROI → OCR ──
+async function captureRunnerFrames(snapTs,motionBbox){
   const video=document.getElementById('viewfinder');
   if(!video.videoWidth) return;
+  const vw=video.videoWidth,vh=video.videoHeight;
 
-  const vw=video.videoWidth, vh=video.videoHeight;
-  let bestCanvas=null, bestScore=0;
-
-  // 連拍 8 張（每 80ms 一張，總共 ~640ms）
-  for(let i=0;i<8;i++){
-    await new Promise(r=>setTimeout(r,80));
+  // ★ 快速短連拍（5張×25ms = 125ms，抓得到衝線瞬間）
+  const frames=[];
+  for(let i=0;i<5;i++){
+    await new Promise(r=>setTimeout(r,25));
     const c=document.createElement('canvas');
-    c.width=vw; c.height=vh;
+    c.width=vw;c.height=vh;
     c.getContext('2d').drawImage(video,0,0,vw,vh);
-    const score=calcSharpness(c);
-    if(score>bestScore){ bestScore=score; bestCanvas=c; }
+    frames.push(c);
   }
-  if(!bestCanvas) return;
 
-  // 用顏色猜測作為備用（OCR 前先加一個「處理中」項目）
-  const zc=getZoneColorFromCanvas(bestCanvas);
+  // ★ 擴展 Motion BBox：加邊距，確保包含整個人體
+  const pad=Math.floor(vh*0.08);
+  const humanX=Math.max(0,(motionBbox?.x||0)-pad);
+  const humanY=Math.max(0,(motionBbox?.y||0)-pad);
+  const humanW=Math.min(vw-humanX,((motionBbox?.w||vw*0.3))+pad*2);
+  const humanH=Math.min(vh-humanY,((motionBbox?.h||vh*0.6))+pad*2);
+
+  // ★ 胸口 ROI = 人體框的上方 20%~65%（胸口位置）
+  const chestX=humanX;
+  const chestY=humanY+Math.floor(humanH*0.20);
+  const chestW=humanW;
+  const chestH=Math.floor(humanH*0.45);
+
+  // 挑胸口區域清晰度最高的幀
+  let bestCanvas=null,bestScore=0;
+  for(const c of frames){
+    const score=calcSharpness(c,chestX,chestY,Math.max(1,chestW),Math.max(1,chestH));
+    if(score>bestScore){bestScore=score;bestCanvas=c;}
+  }
+  if(!bestCanvas) bestCanvas=frames[0];
+
+  // ★ 建立 OCR 用的胸口 canvas（放大+二值化）
+  const chestCanvas=preprocessBibCanvas(bestCanvas,chestX,chestY,Math.max(1,chestW),Math.max(1,chestH));
+
+  // 加入「處理中」佔位項目
   const uid=aiCnt++;
-  aiQueue.push({
-    uid,
-    studentId:-1,      // 尚未確定
-    bib:'…',
-    name:'OCR辨識中…',
-    ts:snapTs,
-    timeStr:fmtTime(snapTs),
-    confidence:0,
-    reason:'🔄OCR'
-  });
+  aiQueue.push({uid,studentId:-1,bib:'…',name:'OCR辨識中…',
+    ts:snapTs,timeStr:fmtTime(snapTs),confidence:0,reason:'🔄OCR'});
   renderAIQueue();
 
-  // OCR（取全幀讓 Tesseract 自己找號碼）
   try{
-    const worker=await getTessWorker();
-    if(!worker) throw new Error('Worker 未就緒');
+    // ★ OCR：只對胸口小圖，不是全畫面
+    const b64=canvasToBase64(chestCanvas,480);
+    const detectedBib=await claudeOCR(b64);
+    console.log('胸口 OCR 結果:',detectedBib,
+      `BBox=(${humanX},${humanY},${humanW},${humanH})`);
 
-    // 先縮小到合理尺寸（太大 OCR 反而慢）
-    const ocrW=Math.min(vw,960), ocrH=Math.round(vh*(ocrW/vw));
-    const ocrC=document.createElement('canvas');
-    ocrC.width=ocrW; ocrC.height=ocrH;
-    const ocrCtx=ocrC.getContext('2d');
-    // 前處理：對比增強
-    ocrCtx.filter='grayscale(1) contrast(2.2) brightness(1.05)';
-    ocrCtx.drawImage(bestCanvas,0,0,ocrW,ocrH);
-    ocrCtx.filter='none';
-
-    const result=await worker.recognize(ocrC);
-    const rawText=result.data.text||'';
-
-    // 抽取所有數字片段，取最短的非零數字（號碼通常 1~3 位）
-    const numTokens=rawText.match(/[0-9]+/g)||[];
-    const bibCandidates=numTokens
-      .filter(t=>t.length>=1&&t.length<=3&&parseInt(t)>0)
-      .sort((a,b)=>a.length-b.length); // 優先較短（號碼通常 1~2 位）
-
-    const detectedBib=bibCandidates[0]||null;
-    console.log('OCR raw:',rawText,'→ candidates:',bibCandidates,'→ chose:',detectedBib);
-
-    // 找對應學生
-    let stu=null, conf=0, reason='';
+    let stu=null,conf=0,reason='';
     if(detectedBib){
       stu=students.find(s=>s.bib===detectedBib&&s.currentLap<targetLaps);
-      if(stu){ conf=92; reason='🎯OCR'; }
+      if(stu){conf=92;reason='🎯OCR';}
     }
-    // OCR 失敗則退回顏色比對
-    if(!stu&&zc){
-      const r=colorMatch(zc);
-      if(r){ stu=r.student; conf=r.conf; reason='🎨色彩'; }
+    // 顏色備援
+    if(!stu){
+      const zc=getZoneColorFromCanvas(bestCanvas);
+      const cm=colorMatch(zc);
+      if(cm){stu=cm.student;conf=cm.conf;reason='🎨色彩';}
     }
-    // 最後備用：從在跑學生中隨機
     if(!stu){
       const active=students.filter(s=>s.currentLap<targetLaps);
-      if(active.length){ stu=active[0]; conf=15; reason='⚠️未知'; }
+      if(active.length){stu=active[0];conf=15;reason='⚠️未知';}
     }
 
-    // 更新佇列中的「處理中」項目
     const idx=aiQueue.findIndex(q=>q.uid===uid);
     if(idx>-1&&stu){
-      aiQueue[idx]={
-        uid, studentId:stu.id, bib:stu.bib, name:stu.name,
-        ts:snapTs, timeStr:fmtTime(snapTs), confidence:conf, reason
-      };
+      aiQueue[idx]={uid,studentId:stu.id,bib:stu.bib,name:stu.name,
+        ts:snapTs,timeStr:fmtTime(snapTs),confidence:conf,reason};
     } else if(idx>-1){
-      aiQueue.splice(idx,1); // 無法辨識就移除
+      aiQueue.splice(idx,1);
     }
   }catch(e){
     console.error('OCR runner error:',e);
-    // 移除「處理中」項目
     const idx=aiQueue.findIndex(q=>q.uid===uid);
     if(idx>-1) aiQueue.splice(idx,1);
   }
   renderAIQueue();
 }
 
-// 從已擷取的 canvas 取感應帶顏色
+// 從 canvas 取感應帶顏色
 function getZoneColorFromCanvas(canvas){
   if(!tripRect) return null;
-  const {x,y,w,h}=tripRect;
+  const{x,y,w,h}=tripRect;
   try{
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
-    const d=ctx.getImageData(
-      Math.min(x,canvas.width-1), Math.min(y,canvas.height-1),
-      Math.min(w,canvas.width-x), Math.min(h,canvas.height-y)
+    const ctx2=canvas.getContext('2d',{willReadFrequently:true});
+    const d=ctx2.getImageData(
+      Math.min(x,canvas.width-1),Math.min(y,canvas.height-1),
+      Math.min(w,canvas.width-x),Math.min(h,canvas.height-y)
     ).data;
     let rs=0,gs=0,bs=0,n=0;
     for(let i=0;i<d.length;i+=4){
@@ -1524,41 +1471,22 @@ function getZoneColorFromCanvas(canvas){
   return null;
 }
 
-// 顏色比對（visionProfiles）
 function colorMatch(zc){
   if(!zc||!visionProfiles.length) return null;
-  let best=Infinity, bestP=null;
+  let best=Infinity,bestP=null;
   for(const p of visionProfiles){
     const pr=parseInt(p.bibColor.slice(1,3),16);
     const pg=parseInt(p.bibColor.slice(3,5),16);
     const pb=parseInt(p.bibColor.slice(5,7),16);
     const d=colorDist(zc.r,zc.g,zc.b,pr,pg,pb);
-    if(d<best){ best=d; bestP=p; }
+    if(d<best){best=d;bestP=p;}
   }
   if(bestP&&best<80){
     const s=students.find(s=>s.bib===bestP.number&&s.currentLap<targetLaps);
-    if(s) return{student:s, conf:Math.round(Math.max(40,100-best*0.7))};
+    if(s) return{student:s,conf:Math.round(Math.max(40,100-best*0.7))};
   }
   return null;
 }
-
-// 擷取越線區顏色 — 從矩形感應帶取樣，排除地面色後取平均
-function getZoneColor(ctx,vc){
-  if(!tripRect) return null;
-  const {x,y,w,h}=tripRect;
-  try{
-    const d=ctx.getImageData(x,y,w,h).data;
-    let rs=0,gs=0,bs=0,n=0;
-    for(let i=0;i<d.length;i+=4){
-      if(!isGroundColor(d[i],d[i+1],d[i+2])){
-        rs+=d[i];gs+=d[i+1];bs+=d[i+2];n++;
-      }
-    }
-    if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
-  }catch{}
-  return null;
-}
-
 // ════════════════════════════════════════════════
 // AI 辨識隊列
 // ════════════════════════════════════════════════
