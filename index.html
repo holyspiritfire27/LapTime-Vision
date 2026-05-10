@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>LapTime-Vision v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+TC:wght@400;700&display=swap');
 :root{
@@ -257,8 +258,8 @@ textarea{resize:vertical}
 <div id="scanner-modal">
   <div class="scan-title">📋 登錄受測學生號碼</div>
   <p style="color:var(--muted);font-size:0.8rem;text-align:center;max-width:420px">
-    ① 選擇鏡頭 → ② 對準號碼衣 → ③ 點「📸 擷取」→ ④ 輸入號碼 → ⑤ 點「✔ 儲存」<br>
-    <span style="color:var(--yellow)">完成後此鏡頭也將用於測驗越線偵測</span>
+    ① 選擇鏡頭 → ② 對準號碼衣（號碼填滿黃框）→ ③ 點「📸 擷取+OCR」<br>
+    <span style="color:var(--yellow)">AI 自動辨識號碼，確認或手動修正後點「✔ 儲存」</span>
   </p>
 
   <!-- ★ 鏡頭選擇 + 即時預覽（在 scanner modal 內） -->
@@ -290,31 +291,38 @@ textarea{resize:vertical}
     <p style="font-size:0.7rem;color:var(--muted);text-align:center">▲ 擷取畫面（黃框為分析區域）</p>
   </div>
 
-  <!-- 顏色結果 + 號碼輸入 -->
+  <!-- OCR + 顏色結果 + 號碼輸入 -->
   <div id="color-result-panel">
-    <div style="font-size:0.78rem;color:var(--yellow);font-weight:700">🎨 偵測到的顏色特徵</div>
-    <div class="cr-row">
-      <div id="bib-chip" class="c-chip"></div>
-      <div>
-        <div style="font-size:0.88rem;color:var(--text)">號碼衣底色</div>
-        <div class="cr-label" id="bib-chip-label"></div>
+    <!-- OCR 辨識結果 -->
+    <div style="font-size:0.78rem;color:var(--accent);font-weight:700;margin-bottom:4px">🔢 OCR 號碼辨識</div>
+    <div id="ocr-status" style="font-size:0.78rem;color:var(--muted);margin-bottom:6px">—</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div id="ocr-num-display" style="font-family:Rajdhani,sans-serif;font-size:3rem;font-weight:700;
+        color:var(--yellow);background:#1a1a1a;border-radius:8px;padding:4px 18px;
+        letter-spacing:4px;min-width:100px;text-align:center">—</div>
+      <div style="font-size:0.75rem;color:var(--muted);line-height:1.6">
+        AI 自動辨識結果<br>確認正確或手動修正
       </div>
     </div>
-    <div class="cr-row">
-      <div id="txt-chip" class="c-chip"></div>
-      <div>
-        <div style="font-size:0.88rem;color:var(--text)">字體顏色</div>
-        <div class="cr-label" id="txt-chip-label"></div>
+    <!-- 顏色特徵 -->
+    <div style="display:flex;gap:10px;margin-bottom:8px">
+      <div class="cr-row" style="flex:1">
+        <div id="bib-chip" class="c-chip"></div>
+        <div><div style="font-size:0.8rem">底色</div><div class="cr-label" id="bib-chip-label"></div></div>
+      </div>
+      <div class="cr-row" style="flex:1">
+        <div id="txt-chip" class="c-chip"></div>
+        <div><div style="font-size:0.8rem">字色</div><div class="cr-label" id="txt-chip-label"></div></div>
       </div>
     </div>
-    <!-- 錯誤訊息 -->
-    <div id="color-err-msg" style="color:var(--yellow);font-size:0.8rem;font-weight:700;min-height:0"></div>
+    <div id="color-err-msg" style="color:var(--red);font-size:0.78rem;font-weight:700;min-height:0"></div>
+    <!-- 號碼輸入（OCR 自動填入，可手動修正）-->
     <div style="border-top:1px solid var(--border);padding-top:8px">
-      <p style="font-size:0.82rem;color:var(--yellow);font-weight:700;margin-bottom:7px">
-        ✏️ 請輸入這件號碼衣的號碼：
+      <p style="font-size:0.8rem;color:var(--yellow);font-weight:700;margin-bottom:6px">
+        ✏️ 確認 / 修正號碼後儲存：
       </p>
       <div id="bib-input-row">
-        <input type="number" id="scan-bib-input" placeholder="15" min="1" max="999">
+        <input type="number" id="scan-bib-input" placeholder="號碼" min="1" max="999">
         <button id="btn-scan-save" onclick="saveScannedBib()">✔ 儲存</button>
       </div>
       <div id="scan-saved-msg"></div>
@@ -322,7 +330,7 @@ textarea{resize:vertical}
   </div>
 
   <div class="scan-btns">
-    <button id="btn-capture" onclick="captureFrame()">📸 擷取分析</button>
+    <button id="btn-capture" onclick="captureFrame()">📸 擷取 + OCR</button>
     <button id="btn-scan-close" onclick="closeScanner()">完成 / 關閉</button>
   </div>
 </div>
@@ -426,6 +434,39 @@ let corrUid=null;
 // 擷取暫存
 let pendingCapture=null; // {bibHex,txtHex}
 
+// Tesseract Worker（單例，避免重複初始化）
+let tessWorker=null;
+let tessReady=false;
+
+async function getTessWorker(){
+  if(tessWorker&&tessReady) return tessWorker;
+  try{
+    tessWorker=await Tesseract.createWorker('eng',1,{
+      logger:m=>{ if(m.status==='recognizing text') updateOCRProgress(Math.round(m.progress*100)); }
+    });
+    // 設定只辨識數字，大幅提升準確率與速度
+    await tessWorker.setParameters({
+      tessedit_char_whitelist:'0123456789',
+      tessedit_pageseg_mode:'7',  // PSM_SINGLE_LINE
+    });
+    tessReady=true;
+  }catch(e){
+    console.error('Tesseract 初始化失敗:',e);
+    tessWorker=null; tessReady=false;
+  }
+  return tessWorker;
+}
+
+function updateOCRProgress(pct){
+  const el=document.getElementById('ocr-status');
+  if(el) el.textContent=`🔄 OCR 辨識中… ${pct}%`;
+}
+
+// 預先初始化（背景）
+window.addEventListener('load',()=>{
+  setTimeout(()=>getTessWorker().catch(()=>{}), 2000);
+});
+
 // ════════════════════════════════════════════════
 // 頁面載入 — 掃描可用鏡頭
 // ════════════════════════════════════════════════
@@ -514,7 +555,7 @@ async function startScanCam(deviceId){
     constraints.push({video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}}});
     constraints.push({video:{deviceId:{exact:deviceId}}});
   }
-  constraints.push({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
+  constraints.push({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:60}}});
   constraints.push({video:{facingMode:'environment'}});
   constraints.push({video:true});
 
@@ -649,93 +690,144 @@ async function tapFocus(e, video){
   }
 }
 
-// 擷取並分析號碼衣顏色
-function captureFrame(){
+// ── OCR 辨識號碼（對 ROI canvas 執行）──
+async function ocrBibNumber(srcCanvas, roiRect){
+  const worker=await getTessWorker();
+  if(!worker) return null;
+
+  // 1. 裁出 ROI 並放大 3× → 提升 OCR 準確率
+  const roi=roiRect;
+  const SCALE=3;
+  const ocrCanvas=document.createElement('canvas');
+  ocrCanvas.width=roi.w*SCALE;
+  ocrCanvas.height=roi.h*SCALE;
+  const octx=ocrCanvas.getContext('2d');
+
+  // 2. 前處理：放大 + 對比增強 + 灰階
+  octx.filter='grayscale(1) contrast(2.5) brightness(1.1)';
+  octx.drawImage(srcCanvas,
+    roi.x,roi.y,roi.w,roi.h,
+    0,0,ocrCanvas.width,ocrCanvas.height);
+  octx.filter='none';
+
+  // 3. 嘗試正常方向 OCR
+  let result=await worker.recognize(ocrCanvas);
+  let text=(result.data.text||'').replace(/\D/g,'').trim();
+  const conf=result.data.confidence||0;
+
+  // 4. 若信心度低 (<50)，嘗試上下翻轉（號碼衣拍倒了）
+  if(!text||conf<50){
+    const flipCanvas=document.createElement('canvas');
+    flipCanvas.width=ocrCanvas.width; flipCanvas.height=ocrCanvas.height;
+    const fctx=flipCanvas.getContext('2d');
+    fctx.translate(ocrCanvas.width, ocrCanvas.height);
+    fctx.rotate(Math.PI);
+    fctx.drawImage(ocrCanvas,0,0);
+    const r2=await worker.recognize(flipCanvas);
+    const t2=(r2.data.text||'').replace(/\D/g,'').trim();
+    if(t2&&(r2.data.confidence||0)>conf){
+      text=t2;
+    }
+  }
+
+  console.log(`OCR結果: "${text}" 信心度:${conf}`);
+  return text||null;
+}
+
+// 擷取並分析號碼衣（顏色 + OCR）
+async function captureFrame(){
   const video=document.getElementById('scan-video');
   if(!video.videoWidth||!video.videoHeight){
     alert('相機尚未就緒，請稍等！');return;
   }
 
-  // ★ 統一用原始解析度（videoWidth/Height），永遠不為 0
-  //   roi-canvas 的 ROI 框也統一用此尺寸
-  const vw=video.videoWidth;
-  const vh=video.videoHeight;
+  // 鎖定按鈕，避免重複點擊
+  const btn=document.getElementById('btn-capture');
+  btn.disabled=true; btn.textContent='⏳ 處理中…';
 
-  const capCanvas=document.getElementById('cap-canvas');
-  // 預覽縮小到最大 420px 寬，保持比例
-  const scale=Math.min(1, 420/vw);
-  capCanvas.width=Math.round(vw*scale);
-  capCanvas.height=Math.round(vh*scale);
+  const vw=video.videoWidth, vh=video.videoHeight;
 
-  const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
-  capCtx.drawImage(video, 0,0, capCanvas.width, capCanvas.height);
-
-  // ROI：用原始解析度計算
-  const roi=getROIRect(vw, vh);
-
-  // 預覽圖上的黃框（縮放後）
-  capCtx.strokeStyle='#ffea00';
-  capCtx.lineWidth=2;
-  capCtx.setLineDash([7,4]);
-  capCtx.strokeRect(roi.x*scale, roi.y*scale, roi.w*scale, roi.h*scale);
-  capCtx.setLineDash([]);
-  document.getElementById('cap-preview-box').style.display='flex';
-
-  // ── 從原始解析度的 ROI 取像素 ──
-  // 用 offscreen canvas 在原始尺寸操作，確保不受顯示縮放影響
+  // ── Offscreen canvas（原始解析度）──
   const offscreen=document.createElement('canvas');
   offscreen.width=vw; offscreen.height=vh;
   const offCtx=offscreen.getContext('2d',{willReadFrequently:true});
-  offCtx.drawImage(video, 0,0, vw, vh);
+  offCtx.drawImage(video,0,0,vw,vh);
 
-  // 只取 ROI 中央 70% 面積，排除邊框干擾
-  const ix=roi.x+Math.floor(roi.w*0.15);
-  const iy=roi.y+Math.floor(roi.h*0.15);
-  const iw=Math.max(1,Math.floor(roi.w*0.70));
-  const ih=Math.max(1,Math.floor(roi.h*0.70));
+  // ROI（與 roi-canvas 畫面框對應）
+  const roi=getROIRect(vw,vh);
+
+  // ── 預覽圖（縮放顯示）──
+  const capCanvas=document.getElementById('cap-canvas');
+  const scale=Math.min(1,420/vw);
+  capCanvas.width=Math.round(vw*scale);
+  capCanvas.height=Math.round(vh*scale);
+  const capCtx=capCanvas.getContext('2d',{willReadFrequently:true});
+  capCtx.drawImage(video,0,0,capCanvas.width,capCanvas.height);
+  capCtx.strokeStyle='#ffea00'; capCtx.lineWidth=2; capCtx.setLineDash([7,4]);
+  capCtx.strokeRect(roi.x*scale,roi.y*scale,roi.w*scale,roi.h*scale);
+  capCtx.setLineDash([]);
+  document.getElementById('cap-preview-box').style.display='flex';
+
+  // ── 顏色分析（ROI 中央 70%）──
+  const ix=roi.x+Math.floor(roi.w*0.15), iy=roi.y+Math.floor(roi.h*0.15);
+  const iw=Math.max(1,Math.floor(roi.w*0.70)), ih=Math.max(1,Math.floor(roi.h*0.70));
   const roiData=offCtx.getImageData(ix,iy,iw,ih).data;
-
-  // 取樣（步進 3px 即可，原始解析度樣本量足夠）
   const samples=[];
-  for(let i=0;i<roiData.length;i+=4*3){
+  for(let i=0;i<roiData.length;i+=12){
     const r=roiData[i],g=roiData[i+1],b=roiData[i+2];
     const bright=(r*299+g*587+b*114)/1000;
-    if(bright<8||bright>248) continue; // 排除純黑/純白雜訊
+    if(bright<8||bright>248) continue;
     samples.push({r,g,b});
   }
 
-  if(samples.length<50){
-    showColorResult(null,null,'⚠️ 樣本不足，請確認號碼衣填滿黃框且光線充足');
-    return;
+  let bibHex='#888888', txtHex='#ffffff';
+  if(samples.length>=30){
+    const clusters=kMeans2(samples);
+    if(clusters&&clusters.length>=2){
+      const sat=c=>{const mx=Math.max(c.r,c.g,c.b),mn=Math.min(c.r,c.g,c.b);return mx===0?0:(mx-mn)/mx;};
+      const s0=sat(clusters[0]),s1=sat(clusters[1]);
+      let bibC,txtC;
+      if(Math.abs(s0-s1)>0.12){
+        bibC=s0>s1?clusters[0]:clusters[1]; txtC=s0>s1?clusters[1]:clusters[0];
+      } else {
+        const b0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
+        const b1=(clusters[1].r*299+clusters[1].g*587+clusters[1].b*114)/1000;
+        bibC=b0>=b1?clusters[0]:clusters[1]; txtC=b0<b1?clusters[0]:clusters[1];
+      }
+      bibHex=rgbHex(Math.round(bibC.r),Math.round(bibC.g),Math.round(bibC.b));
+      txtHex=rgbHex(Math.round(txtC.r),Math.round(txtC.g),Math.round(txtC.b));
+    }
   }
+  pendingCapture={bibHex,txtHex};
+  showColorResult(bibHex,txtHex,null);
 
-  // k-means(2) 分出兩個主色群
-  const clusters=kMeans2(samples);
-  if(!clusters||clusters.length<2){
-    showColorResult(null,null,'⚠️ 色彩單一，無法區分底色與字色');
-    return;
+  // ── OCR 號碼辨識 ──
+  const ocrStatusEl=document.getElementById('ocr-status');
+  const ocrNumEl=document.getElementById('ocr-num-display');
+  ocrStatusEl.textContent='🔄 OCR 辨識中，請稍候…';
+  ocrNumEl.textContent='…';
+  document.getElementById('color-result-panel').classList.add('show');
+
+  try{
+    const bibNum=await ocrBibNumber(offscreen,roi);
+    if(bibNum){
+      ocrNumEl.textContent=bibNum;
+      ocrNumEl.style.color='var(--green)';
+      ocrStatusEl.textContent='✅ OCR 辨識完成，請確認號碼正確';
+      document.getElementById('scan-bib-input').value=bibNum;
+    } else {
+      ocrNumEl.textContent='？';
+      ocrNumEl.style.color='var(--red)';
+      ocrStatusEl.textContent='⚠️ OCR 無法辨識，請手動輸入號碼';
+    }
+  }catch(e){
+    ocrNumEl.textContent='Err';
+    ocrStatusEl.textContent='⚠️ OCR 錯誤：'+e.message;
+    console.error('OCR錯誤',e);
+  } finally {
+    btn.disabled=false; btn.textContent='📸 擷取 + OCR';
+    setTimeout(()=>document.getElementById('scan-bib-input').focus(),100);
   }
-
-  // 判斷哪個是底色（飽和度高 = 彩色底），哪個是字色（飽和度低 = 白/黑字）
-  const sat=c=>{const mx=Math.max(c.r,c.g,c.b),mn=Math.min(c.r,c.g,c.b);return mx===0?0:(mx-mn)/mx;};
-  const s0=sat(clusters[0]), s1=sat(clusters[1]);
-  let bibC, txtC;
-  if(Math.abs(s0-s1)>0.12){
-    // 飽和度差異明顯：高飽和 = 底色
-    bibC=s0>s1?clusters[0]:clusters[1];
-    txtC=s0>s1?clusters[1]:clusters[0];
-  } else {
-    // 飽和度相近：較亮的是底色（排除深色底）
-    const b0=(clusters[0].r*299+clusters[0].g*587+clusters[0].b*114)/1000;
-    const b1=(clusters[1].r*299+clusters[1].g*587+clusters[1].b*114)/1000;
-    bibC=b0>=b1?clusters[0]:clusters[1];
-    txtC=b0<b1?clusters[0]:clusters[1];
-  }
-
-  const bibHex=rgbHex(Math.round(bibC.r),Math.round(bibC.g),Math.round(bibC.b));
-  const txtHex=rgbHex(Math.round(txtC.r),Math.round(txtC.g),Math.round(txtC.b));
-  pendingCapture={bibHex, txtHex};
-  showColorResult(bibHex, txtHex, null);
 }
 
 // 統一更新顏色結果 UI
@@ -874,8 +966,9 @@ async function startMainCam(){
   try{
     mainStream=await navigator.mediaDevices.getUserMedia({video:{
       deviceId:{exact:deviceId},
-      width:{ideal:1280},height:{ideal:720},
-      focusMode:'continuous'   // ★ 持續自動對焦
+      width:{ideal:1920},height:{ideal:1080},
+      frameRate:{ideal:60},       // ★ 高幀率，減少漏幀
+      focusMode:'continuous'     // ★ 持續自動對焦
     }});
     video.srcObject=mainStream;
     video.onloadedmetadata=()=>{
@@ -1280,11 +1373,173 @@ function onCrossing(ctx,vc){
   setTimeout(()=>drawFL(),280);
 
   cooldown=true;
-  setTimeout(()=>cooldown=false,1800);
+  setTimeout(()=>cooldown=false,2500);
 
-  // 擷取越線區顏色
-  const zc=getZoneColor(ctx,vc);
-  pushAIItem(zc);
+  // 截圖時間戳記（在非同步 OCR 前就記錄）
+  const snapTs=difference;
+
+  // 連拍多幀 → 挑最清晰 → OCR
+  captureRunnerFrames(snapTs);
+}
+
+// ── 清晰度評分（Laplacian 方差）──
+function calcSharpness(canvas){
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  // 只取畫面上半部（人體，排除地面）
+  const h2=Math.floor(canvas.height*0.65);
+  const img=ctx.getImageData(0,0,canvas.width,h2);
+  const d=img.data;
+  const w=canvas.width;
+  let variance=0, n=0;
+  // Laplacian: |4*center - left - right - top - bottom|
+  for(let y=1;y<h2-1;y++){
+    for(let x=1;x<w-1;x++){
+      const i=(y*w+x)*4;
+      // 用灰階近似
+      const c=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
+      const l=(d[i-4]*77+d[i-3]*150+d[i-2]*29)>>8;
+      const r=(d[i+4]*77+d[i+5]*150+d[i+6]*29)>>8;
+      const t=(d[(i-w*4)]*77+d[(i-w*4)+1]*150+d[(i-w*4)+2]*29)>>8;
+      const b=(d[(i+w*4)]*77+d[(i+w*4)+1]*150+d[(i+w*4)+2]*29)>>8;
+      const lap=4*c-l-r-t-b;
+      variance+=lap*lap; n++;
+    }
+  }
+  return n>0?variance/n:0;
+}
+
+// ── 連拍 8 幀 → 挑最清晰 → OCR 辨識 ──
+async function captureRunnerFrames(snapTs){
+  const video=document.getElementById('viewfinder');
+  if(!video.videoWidth) return;
+
+  const vw=video.videoWidth, vh=video.videoHeight;
+  let bestCanvas=null, bestScore=0;
+
+  // 連拍 8 張（每 80ms 一張，總共 ~640ms）
+  for(let i=0;i<8;i++){
+    await new Promise(r=>setTimeout(r,80));
+    const c=document.createElement('canvas');
+    c.width=vw; c.height=vh;
+    c.getContext('2d').drawImage(video,0,0,vw,vh);
+    const score=calcSharpness(c);
+    if(score>bestScore){ bestScore=score; bestCanvas=c; }
+  }
+  if(!bestCanvas) return;
+
+  // 用顏色猜測作為備用（OCR 前先加一個「處理中」項目）
+  const zc=getZoneColorFromCanvas(bestCanvas);
+  const uid=aiCnt++;
+  aiQueue.push({
+    uid,
+    studentId:-1,      // 尚未確定
+    bib:'…',
+    name:'OCR辨識中…',
+    ts:snapTs,
+    timeStr:fmtTime(snapTs),
+    confidence:0,
+    reason:'🔄OCR'
+  });
+  renderAIQueue();
+
+  // OCR（取全幀讓 Tesseract 自己找號碼）
+  try{
+    const worker=await getTessWorker();
+    if(!worker) throw new Error('Worker 未就緒');
+
+    // 先縮小到合理尺寸（太大 OCR 反而慢）
+    const ocrW=Math.min(vw,960), ocrH=Math.round(vh*(ocrW/vw));
+    const ocrC=document.createElement('canvas');
+    ocrC.width=ocrW; ocrC.height=ocrH;
+    const ocrCtx=ocrC.getContext('2d');
+    // 前處理：對比增強
+    ocrCtx.filter='grayscale(1) contrast(2.2) brightness(1.05)';
+    ocrCtx.drawImage(bestCanvas,0,0,ocrW,ocrH);
+    ocrCtx.filter='none';
+
+    const result=await worker.recognize(ocrC);
+    const rawText=result.data.text||'';
+
+    // 抽取所有數字片段，取最短的非零數字（號碼通常 1~3 位）
+    const numTokens=rawText.match(/[0-9]+/g)||[];
+    const bibCandidates=numTokens
+      .filter(t=>t.length>=1&&t.length<=3&&parseInt(t)>0)
+      .sort((a,b)=>a.length-b.length); // 優先較短（號碼通常 1~2 位）
+
+    const detectedBib=bibCandidates[0]||null;
+    console.log('OCR raw:',rawText,'→ candidates:',bibCandidates,'→ chose:',detectedBib);
+
+    // 找對應學生
+    let stu=null, conf=0, reason='';
+    if(detectedBib){
+      stu=students.find(s=>s.bib===detectedBib&&s.currentLap<targetLaps);
+      if(stu){ conf=92; reason='🎯OCR'; }
+    }
+    // OCR 失敗則退回顏色比對
+    if(!stu&&zc){
+      const r=colorMatch(zc);
+      if(r){ stu=r.student; conf=r.conf; reason='🎨色彩'; }
+    }
+    // 最後備用：從在跑學生中隨機
+    if(!stu){
+      const active=students.filter(s=>s.currentLap<targetLaps);
+      if(active.length){ stu=active[0]; conf=15; reason='⚠️未知'; }
+    }
+
+    // 更新佇列中的「處理中」項目
+    const idx=aiQueue.findIndex(q=>q.uid===uid);
+    if(idx>-1&&stu){
+      aiQueue[idx]={
+        uid, studentId:stu.id, bib:stu.bib, name:stu.name,
+        ts:snapTs, timeStr:fmtTime(snapTs), confidence:conf, reason
+      };
+    } else if(idx>-1){
+      aiQueue.splice(idx,1); // 無法辨識就移除
+    }
+  }catch(e){
+    console.error('OCR runner error:',e);
+    // 移除「處理中」項目
+    const idx=aiQueue.findIndex(q=>q.uid===uid);
+    if(idx>-1) aiQueue.splice(idx,1);
+  }
+  renderAIQueue();
+}
+
+// 從已擷取的 canvas 取感應帶顏色
+function getZoneColorFromCanvas(canvas){
+  if(!tripRect) return null;
+  const {x,y,w,h}=tripRect;
+  try{
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const d=ctx.getImageData(
+      Math.min(x,canvas.width-1), Math.min(y,canvas.height-1),
+      Math.min(w,canvas.width-x), Math.min(h,canvas.height-y)
+    ).data;
+    let rs=0,gs=0,bs=0,n=0;
+    for(let i=0;i<d.length;i+=4){
+      if(!isGroundColor(d[i],d[i+1],d[i+2])){rs+=d[i];gs+=d[i+1];bs+=d[i+2];n++;}
+    }
+    if(n>0) return{r:Math.round(rs/n),g:Math.round(gs/n),b:Math.round(bs/n)};
+  }catch{}
+  return null;
+}
+
+// 顏色比對（visionProfiles）
+function colorMatch(zc){
+  if(!zc||!visionProfiles.length) return null;
+  let best=Infinity, bestP=null;
+  for(const p of visionProfiles){
+    const pr=parseInt(p.bibColor.slice(1,3),16);
+    const pg=parseInt(p.bibColor.slice(3,5),16);
+    const pb=parseInt(p.bibColor.slice(5,7),16);
+    const d=colorDist(zc.r,zc.g,zc.b,pr,pg,pb);
+    if(d<best){ best=d; bestP=p; }
+  }
+  if(bestP&&best<80){
+    const s=students.find(s=>s.bib===bestP.number&&s.currentLap<targetLaps);
+    if(s) return{student:s, conf:Math.round(Math.max(40,100-best*0.7))};
+  }
+  return null;
 }
 
 // 擷取越線區顏色 — 從矩形感應帶取樣，排除地面色後取平均
@@ -1307,43 +1562,15 @@ function getZoneColor(ctx,vc){
 // ════════════════════════════════════════════════
 // AI 辨識隊列
 // ════════════════════════════════════════════════
-function simulateCrossing(){
-  if(!isRunning) return;
-  pushAIItem(null);
-}
 
-function pushAIItem(zoneColor){
+// 模擬越線（手動測試）— 直接用顏色猜測，不跑 OCR
+function simulateCrossing(){
   if(!isRunning) return;
   const active=students.filter(s=>s.currentLap<targetLaps);
   if(!active.length) return;
-
-  let student=null,confidence=0,reason='';
-
-  if(zoneColor&&visionProfiles.length>0){
-    let best=Infinity,bestP=null;
-    for(const p of visionProfiles){
-      const pr=parseInt(p.bibColor.slice(1,3),16);
-      const pg=parseInt(p.bibColor.slice(3,5),16);
-      const pb=parseInt(p.bibColor.slice(5,7),16);
-      const d=colorDist(zoneColor.r,zoneColor.g,zoneColor.b,pr,pg,pb);
-      if(d<best){best=d;bestP=p;}
-    }
-    if(bestP&&best<80){
-      const s=active.find(s=>s.bib===bestP.number);
-      if(s){student=s;confidence=Math.round(Math.max(60,100-best*0.6));reason='🎽色彩';}
-    }
-  }
-  if(!student&&visionProfiles.length>0){
-    const ps=active.filter(s=>visionProfiles.find(p=>p.number===s.bib));
-    if(ps.length){student=ps[Math.floor(Math.random()*ps.length)];confidence=40+Math.floor(Math.random()*20);reason='🔍推測';}
-  }
-  if(!student){
-    student=active[Math.floor(Math.random()*active.length)];
-    confidence=20+Math.floor(Math.random()*20);reason='⚠️需確認';
-  }
-
-  aiQueue.push({uid:aiCnt++,studentId:student.id,bib:student.bib,name:student.name,
-    ts:difference,timeStr:fmtTime(difference),confidence,reason});
+  const stu=active[Math.floor(Math.random()*active.length)];
+  aiQueue.push({uid:aiCnt++,studentId:stu.id,bib:stu.bib,name:stu.name,
+    ts:difference,timeStr:fmtTime(difference),confidence:50,reason:'⚡模擬'});
   renderAIQueue();
 }
 
@@ -1354,18 +1581,27 @@ function renderAIQueue(){
     c.innerHTML='<span style="color:var(--muted);font-size:0.82rem">目前無撞線動態</span>';return;
   }
   aiQueue.forEach(item=>{
-    const cc=item.confidence>=70?'var(--green)':item.confidence>=45?'var(--yellow)':'var(--red)';
+    const isPending=item.studentId===-1;
+    const cc=isPending?'var(--muted)':item.confidence>=80?'var(--green)':item.confidence>=50?'var(--yellow)':'var(--red)';
     const d=document.createElement('div');
     d.className='ai-card';
-    d.innerHTML=`<div class="btag">${item.bib}</div>
-      <div><div class="aname">${item.name}</div>
-      <div class="atime">⏱${item.timeStr} <span style="color:${cc}">${item.reason}${item.confidence}%</span></div></div>
-      <button class="aok"  onclick="confirmAI(${item.uid})">✔</button>
-      <button class="aedit" onclick="openCorr(${item.uid})">✏️</button>
-      <button class="ano"  onclick="discardAI(${item.uid})">✕</button>`;
+    if(isPending){
+      d.style.opacity='0.65';
+      d.innerHTML=`<div class="btag" style="color:var(--muted)">…</div>
+        <div><div class="aname" style="color:var(--muted)">${item.name}</div>
+        <div class="atime">⏱${item.timeStr} <span style="color:var(--muted)">${item.reason}</span></div></div>`;
+    } else {
+      d.innerHTML=`<div class="btag">${item.bib}</div>
+        <div><div class="aname">${item.name}</div>
+        <div class="atime">⏱${item.timeStr} <span style="color:${cc}">${item.reason}${item.confidence}%</span></div></div>
+        <button class="aok"  onclick="confirmAI(${item.uid})">✔</button>
+        <button class="aedit" onclick="openCorr(${item.uid})">✏️</button>
+        <button class="ano"  onclick="discardAI(${item.uid})">✕</button>`;
+    }
     c.appendChild(d);
   });
 }
+
 
 function confirmAI(uid){
   const idx=aiQueue.findIndex(q=>q.uid===uid);
